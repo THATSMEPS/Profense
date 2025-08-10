@@ -1,4 +1,5 @@
 "use client";
+import React from 'react';
 import { create } from 'zustand';
 
 export type PulseStateName = 'lost' | 'unfocused' | 'confident' | 'frustrated' | 'neutral';
