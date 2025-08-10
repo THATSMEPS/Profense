@@ -33,7 +33,7 @@ export async function generateAdaptiveLesson(params: {
 }): Promise<AdaptiveResponse> {
   const { topic, userMessage, pulse, history = [] } = params;
 
-  const systemPrompt = `You are SynapSense, an emotionally and cognitively adaptive AI professor.
+  const systemPrompt = `You are Profense, an emotionally and cognitively adaptive AI professor.
 You receive a current Learning Pulse with cognitive load, state, and signals. Adapt your teaching style accordingly.
 
 Rules:
