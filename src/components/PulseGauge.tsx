@@ -3,17 +3,61 @@ import React from 'react';
 
 export default function PulseGauge({ load, state }: { load: number; state: string }) {
   const pct = Math.round(load * 100);
-  const color = pct <= 40 ? '#16a34a' : pct <= 70 ? '#eab308' : '#dc2626';
+  const getColor = () => {
+    if (pct <= 40) return 'from-green-400 to-green-600';
+    if (pct <= 70) return 'from-yellow-400 to-yellow-600';
+    return 'from-red-400 to-red-600';
+  };
+  
+  const getStateColor = () => {
+    switch (state) {
+      case 'frustrated': return 'text-red-400';
+      case 'unfocused': return 'text-yellow-400';
+      case 'confident': return 'text-green-400';
+      case 'lost': return 'text-purple-400';
+      default: return 'text-blue-400';
+    }
+  };
+
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <h3>Learning Pulse</h3>
-      <div style={{ height: 16, background: '#1b2146', borderRadius: 999, border: '1px solid #2a2f66', overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 0.5s ease' }} />
+    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+      <div className="flex items-center space-x-2 mb-3">
+        <span className="text-lg">🧠</span>
+        <span className="text-white font-medium">Learning Pulse</span>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <small>Load: {pct}%</small>
-        <small>State: {state}</small>
+      
+      <div className="space-y-3">
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-blue-200">Cognitive Load:</span>
+            <span className="text-white font-medium">{pct}%</span>
+          </div>
+          <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+            <div 
+              className={`h-full bg-gradient-to-r ${getColor()} transition-all duration-500 ease-out`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+        
+        <div className="flex justify-between text-sm">
+          <span className="text-blue-200">State:</span>
+          <span className={`font-medium capitalize ${getStateColor()}`}>
+            {state}
+          </span>
+        </div>
+        
+        {/* Load Level Indicator */}
+        <div className="flex justify-between text-xs text-blue-300">
+          <span className={pct <= 40 ? 'font-bold text-green-400' : ''}>Low</span>
+          <span className={pct > 40 && pct <= 70 ? 'font-bold text-yellow-400' : ''}>Medium</span>
+          <span className={pct > 70 ? 'font-bold text-red-400' : ''}>High</span>
+        </div>
       </div>
+      
+      <p className="text-blue-200 text-xs mt-3 opacity-70">
+        Real-time cognitive load monitoring
+      </p>
     </div>
   );
 }
