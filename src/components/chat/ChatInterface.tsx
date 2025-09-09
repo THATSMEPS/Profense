@@ -1,0 +1,317 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Send, Mic, MicOff, MessageSquare, Brain, Menu, X } from 'lucide-react';
+import { Button } from '../ui/Button';
+import { useApp } from '../../context/AppContext';
+import { ChatMessage } from '../../types';
+import { CourseOutline } from './CourseOutline';
+import { chatService } from '../../services/chatService';
+
+interface ChatInterfaceProps {
+  onGenerateQuiz?: (subject?: string, difficulty?: string) => void;
+}
+
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) => {
+  const { 
+    chatMessages, 
+    addChatMessage, 
+    teachingMode, 
+    setTeachingMode,
+    learningMode, 
+    setLearningMode,
+    isRecording, 
+    setIsRecording,
+    sidebarOpen,
+    setSidebarOpen,
+    currentCourse
+  } = useApp();
+
+  const [message, setMessage] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(scrollToBottom, [chatMessages]);
+
+  const handleSendMessage = async () => {
+    if (!message.trim()) return;
+
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      content: message,
+      isUser: true,
+      timestamp: new Date()
+    };
+
+    addChatMessage(userMessage);
+    setMessage('');
+    setIsTyping(true);
+
+    try {
+      // Use real AI service for chat response
+      const aiResponse = await chatService.sendMessage({
+        message: message,
+        sessionId: undefined, // Will be handled by backend
+        subject: currentCourse?.subject,
+        currentTopic: currentCourse?.subject,
+        difficulty: 'intermediate'
+      });
+
+      const aiMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        content: aiResponse.content,
+        isUser: false,
+        timestamp: new Date()
+      };
+      
+      addChatMessage(aiMessage);
+    } catch (error) {
+      console.error('Failed to get AI response:', error);
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        content: 'Sorry, I encountered an error. Please try again.',
+        isUser: false,
+        timestamp: new Date()
+      };
+      addChatMessage(errorMessage);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const toggleRecording = () => {
+    setIsRecording(!isRecording);
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-50">
+      {/* Course Outline Sidebar */}
+      <AnimatePresence>
+        {sidebarOpen && currentCourse && (
+          <motion.div
+            initial={{ x: -320 }}
+            animate={{ x: 0 }}
+            exit={{ x: -320 }}
+            transition={{ duration: 0.3 }}
+            className="w-80 bg-white border-r border-gray-200 flex-shrink-0"
+          >
+            <CourseOutline course={currentCourse} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Chat Header */}
+        <div className="bg-white border-b border-gray-200 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {currentCourse && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  icon={sidebarOpen ? X : Menu}
+                >
+                  {sidebarOpen ? 'Close' : 'Menu'}
+                </Button>
+              )}
+              <div className="flex items-center gap-2">
+                <div className="bg-blue-100 p-2 rounded-lg">
+                  <Brain className="text-blue-600" size={20} />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-gray-900">AI Tutor</h2>
+                  <p className="text-sm text-gray-500">
+                    {learningMode === 'teaching' ? 'Teaching Mode' : 'Chat Mode'} • {teachingMode} level
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Teaching Mode Selector */}
+              <select
+                value={teachingMode}
+                onChange={(e) => setTeachingMode(e.target.value as any)}
+                className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="beginner">Beginner</option>
+                <option value="normal">Normal</option>
+                <option value="advanced">Advanced</option>
+              </select>
+
+              {/* Learning Mode Toggle */}
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setLearningMode('teaching')}
+                  className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${
+                    learningMode === 'teaching' 
+                      ? 'bg-blue-600 text-white shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Teaching
+                </button>
+                <button
+                  onClick={() => setLearningMode('chat')}
+                  className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${
+                    learningMode === 'chat' 
+                      ? 'bg-blue-600 text-white shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Chat
+                </button>
+              </div>
+
+              {/* Generate Quiz Button */}
+              {onGenerateQuiz && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onGenerateQuiz(currentCourse?.subject)}
+                  className="ml-2"
+                >
+                  Generate Quiz
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Messages Area */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {chatMessages.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center py-12"
+            >
+              <div className="bg-blue-50 p-6 rounded-2xl mx-auto w-fit mb-4">
+                <MessageSquare className="text-blue-600" size={48} />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Start Your Learning Session</h3>
+              <p className="text-gray-600 mb-6">Ask me anything or let me guide you through a topic!</p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {[
+                  'Explain photosynthesis',
+                  'Help with calculus derivatives',
+                  'What is quantum physics?',
+                  'Teach me about DNA structure'
+                ].map((suggestion, index) => (
+                  <Button
+                    key={index}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setMessage(suggestion)}
+                  >
+                    {suggestion}
+                  </Button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {chatMessages.map((msg) => (
+            <motion.div
+              key={msg.id}
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.3 }}
+              className={`flex ${msg.isUser ? 'justify-end' : 'justify-start'}`}
+            >
+              <div className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl ${
+                msg.isUser 
+                  ? 'bg-gray-600 text-white rounded-br-md' 
+                  : 'bg-blue-600 text-white rounded-bl-md'
+              }`}>
+                <p className="text-sm leading-relaxed">{msg.content}</p>
+                <p className="text-xs mt-1 opacity-70">
+                  {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+            </motion.div>
+          ))}
+
+          {isTyping && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex justify-start"
+            >
+              <div className="bg-blue-600 text-white px-4 py-3 rounded-2xl rounded-bl-md">
+                <div className="flex space-x-1">
+                  <motion.div
+                    animate={{ scale: [1, 1.5, 1] }}
+                    transition={{ duration: 0.6, repeat: Infinity, delay: 0 }}
+                    className="w-2 h-2 bg-white rounded-full"
+                  />
+                  <motion.div
+                    animate={{ scale: [1, 1.5, 1] }}
+                    transition={{ duration: 0.6, repeat: Infinity, delay: 0.2 }}
+                    className="w-2 h-2 bg-white rounded-full"
+                  />
+                  <motion.div
+                    animate={{ scale: [1, 1.5, 1] }}
+                    transition={{ duration: 0.6, repeat: Infinity, delay: 0.4 }}
+                    className="w-2 h-2 bg-white rounded-full"
+                  />
+                </div>
+              </div>
+            </motion.div>
+          )}
+          
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Message Input */}
+        <div className="bg-white border-t border-gray-200 p-4">
+          <div className="flex items-end gap-3">
+            <button
+              onClick={toggleRecording}
+              className={`p-3 rounded-full transition-all ${
+                isRecording 
+                  ? 'bg-red-600 text-white animate-pulse' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
+            </button>
+            
+            <div className="flex-1 relative">
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Ask me anything or describe what you'd like to learn..."
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                rows={1}
+                style={{ minHeight: '48px', maxHeight: '120px' }}
+              />
+            </div>
+            
+            <Button
+              onClick={handleSendMessage}
+              disabled={!message.trim()}
+              icon={Send}
+              className="px-4 py-3"
+            >
+              Send
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
