@@ -217,6 +217,45 @@ class UserService {
       throw error;
     }
   }
+
+  async trackQuizCompletion(score: number, subject: string, totalQuestions: number, timeSpent?: number): Promise<{ newAchievements: string[] }> {
+    try {
+      const response: ApiResponse<{ newAchievements: string[] }> = await apiClient.post('/users/track-quiz', {
+        score,
+        subject,
+        totalQuestions,
+        timeSpent
+      });
+      
+      if (response.success && response.data) {
+        return response.data;
+      }
+      
+      throw new Error(response.error || 'Failed to track quiz completion');
+    } catch (error) {
+      console.error('Track quiz completion error:', error);
+      throw error;
+    }
+  }
+
+  async trackLearningSession(subject: string, timeSpent: number, topic?: string): Promise<{ totalLearningTime: number; newAchievements: string[] }> {
+    try {
+      const response: ApiResponse<{ totalLearningTime: number; newAchievements: string[] }> = await apiClient.post('/users/track-learning-session', {
+        subject,
+        topic,
+        timeSpent
+      });
+      
+      if (response.success && response.data) {
+        return response.data;
+      }
+      
+      throw new Error(response.error || 'Failed to track learning session');
+    } catch (error) {
+      console.error('Track learning session error:', error);
+      throw error;
+    }
+  }
 }
 
 export const userService = new UserService();

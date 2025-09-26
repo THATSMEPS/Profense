@@ -6,13 +6,14 @@ import { AuthForm } from './components/auth/AuthForm';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { ChatInterface } from './components/chat/ChatInterface';
 import { QuizInterface } from './components/quiz/QuizInterface';
+import { QuizHistory } from './components/quiz/QuizHistory';
 import { CourseLibrary } from './components/courses/CourseLibrary';
 import { ProfilePage } from './components/profile/ProfilePage';
 import { User, Course, QuizResult, Quiz } from './types';
 import { authService } from './services/authService';
 import { quizService } from './services/quizService';
 
-type Page = 'landing' | 'auth' | 'dashboard' | 'chat' | 'quiz' | 'courses' | 'profile';
+type Page = 'landing' | 'auth' | 'dashboard' | 'chat' | 'quiz' | 'quiz-history' | 'courses' | 'profile';
 
 // Loading component
 const LoadingSpinner: React.FC = () => (
@@ -121,13 +122,13 @@ const AppContent: React.FC = () => {
     setCurrentPage('chat');
   };
 
-  const handleStartQuiz = async (subject?: string, difficulty?: string) => {
+  const handleStartQuiz = async (subject?: string, difficulty?: string, topic?: string, chatContext?: string) => {
     try {
       setPageLoading(true);
       let quiz: Quiz;
       
       if (subject && difficulty) {
-        quiz = await quizService.generateQuiz(subject, difficulty);
+        quiz = await quizService.generateQuiz(subject, difficulty, 10, topic, chatContext);
       } else {
         // Get recommended quiz or show quiz selection
         const quizzes = await quizService.getRecommendedQuizzes();
@@ -152,9 +153,24 @@ const AppContent: React.FC = () => {
     try {
       console.log('Quiz completed with result:', result);
       // The quiz submission is handled in the QuizInterface component
-      setCurrentPage('dashboard');
+      setCurrentPage('quiz-history');
     } catch (error) {
       console.error('Error handling quiz completion:', error);
+    }
+  };
+
+  const handleRetakeQuiz = async (quizId: string) => {
+    try {
+      setPageLoading(true);
+      // For now, generate a new quiz of the same type
+      // In production, you'd load the exact same quiz
+      const quiz = await quizService.generateQuiz('Mathematics', 'intermediate');
+      setCurrentQuiz(quiz);
+      setCurrentPage('quiz');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to load quiz');
+    } finally {
+      setPageLoading(false);
     }
   };
 
@@ -210,23 +226,25 @@ const AppContent: React.FC = () => {
         );
       case 'chat':
         return <ChatInterface onGenerateQuiz={handleStartQuiz} />;
-      case 'quiz':
+  case 'quiz':
         return currentQuiz ? (
           <QuizInterface
             quiz={currentQuiz}
             onComplete={handleQuizComplete}
-            onExit={() => setCurrentPage('dashboard')}
+            onExit={() => setCurrentPage('quiz-history')}
           />
         ) : (
-          <div className="p-8 text-center">
-            <p>No quiz available. Please try again.</p>
-            <button 
-              onClick={() => setCurrentPage('dashboard')}
-              className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-            >
-              Back to Dashboard
-            </button>
-          </div>
+          <QuizHistory 
+            onStartQuiz={handleStartQuiz} 
+            onRetakeQuiz={handleRetakeQuiz}
+          />
+        );
+      case 'quiz-history':
+        return (
+          <QuizHistory 
+            onStartQuiz={handleStartQuiz} 
+            onRetakeQuiz={handleRetakeQuiz}
+          />
         );
       case 'courses':
         return <CourseLibrary onSelectCourse={handleStartLearning} />;
@@ -255,7 +273,7 @@ const AppContent: React.FC = () => {
               { key: 'dashboard', label: 'Dashboard' },
               { key: 'courses', label: 'Courses' },
               { key: 'chat', label: 'Learn' },
-              { key: 'quiz', label: 'Quiz' },
+              { key: 'quiz-history', label: 'Quiz History' },
               { key: 'profile', label: 'Profile' }
             ].map(({ key, label }) => (
               <button

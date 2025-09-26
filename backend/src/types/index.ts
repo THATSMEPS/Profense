@@ -112,26 +112,57 @@ export interface ILearningSession extends Document {
 // Chat Types
 export interface IChatMessage extends Document {
   _id: Types.ObjectId;
-  sessionId: Types.ObjectId;
-  userId: Types.ObjectId;
   content: string;
   isUser: boolean;
   messageType: 'text' | 'equation' | 'code' | 'image' | 'audio';
   timestamp: Date;
   aiModel?: string;
   processingTime?: number; // in milliseconds
-  context?: {
-    currentTopic: string;
-    difficulty: string;
-    teachingMode: string;
-    previousConcepts: string[];
-  };
   metadata?: {
     confidence: number;
     sentiment: 'positive' | 'negative' | 'neutral' | 'confused';
     conceptsIdentified: string[];
     suggestedActions: string[];
+    nextTopics: string[];
+    teachingMode: 'beginner' | 'normal' | 'advanced';
   };
+}
+
+export interface IChatSession extends Document {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  title?: string;
+  subject?: string;
+  currentTopic?: string;
+  context: {
+    difficulty: 'beginner' | 'normal' | 'advanced';
+    teachingMode: 'beginner' | 'normal' | 'advanced';
+    previousConcepts: string[];
+    sessionType: 'teaching' | 'chat' | 'quiz-prep' | 'review';
+    learningObjectives: string[];
+  };
+  messages: IChatMessage[];
+  sessionStatus: 'active' | 'paused' | 'completed' | 'archived';
+  startTime: Date;
+  endTime?: Date;
+  lastActivity: Date;
+  messageCount: number;
+  totalDuration: number;
+  conceptsCovered: Array<{
+    concept: string;
+    confidence: number;
+    timestamp: Date;
+  }>;
+  quizzesGenerated: Types.ObjectId[];
+  tags: string[];
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Methods
+  addMessage(messageData: Partial<IChatMessage>): Promise<any>;
+  endSession(): Promise<any>;
+  archiveSession(): Promise<any>;
+  getContextSummary(): any;
 }
 
 // Quiz Types
@@ -139,33 +170,131 @@ export interface IQuiz extends Document {
   _id: Types.ObjectId;
   title: string;
   description: string;
-  courseId: Types.ObjectId;
-  topicId: Types.ObjectId;
+  subject: string;
+  topic?: string;
+  difficulty: 'beginner' | 'intermediate' | 'advanced';
   questions: IQuestion[];
   timeLimit?: number; // in minutes
-  subject: string;
-  difficulty: 'beginner' | 'intermediate' | 'advanced';
-  questionTypes: ('multiple-choice' | 'numerical' | 'text' | 'image-based')[];
   passingScore: number;
   maxAttempts: number;
+  createdBy: {
+    userId?: Types.ObjectId;
+    type: 'user' | 'ai' | 'admin';
+  };
+  generationContext?: {
+    chatSessionId?: Types.ObjectId;
+    conversationSummary?: string;
+    conceptsCovered: string[];
+    aiModel: string;
+    generatedAt: Date;
+  };
+  attempts: IQuizAttempt[];
   isActive: boolean;
+  tags: string[];
+  statistics: {
+    totalAttempts: number;
+    averageScore?: number;
+    passRate?: number;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Methods
+  addAttempt(userId: string, answers: any[]): Promise<any>;
+  calculateScore(answers: any[]): { raw: number; percentage: number; grade: string };
+  getUserAttempts(userId: string): IQuizAttempt[];
+  canUserAttempt(userId: string): boolean;
+}
+
+export interface IQuestion {
+  id: string;
+  type: 'multiple-choice' | 'numerical' | 'text' | 'true-false';
+  question: string;
+  options?: Array<{
+    id: string;
+    text: string;
+    isCorrect: boolean;
+  }>;
+  correctAnswer?: string;
+  explanation?: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  points: number;
+  concepts: string[];
+  hints?: string[];
+  timeEstimate: number; // in seconds
+}
+
+export interface IQuizAttempt extends Document {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  startedAt: Date;
+  completedAt?: Date;
+  answers: Array<{
+    questionId: string;
+    userAnswer: string;
+    isCorrect: boolean;
+    timeSpent: number;
+    confidence?: number;
+  }>;
+  score: {
+    raw?: number;
+    percentage?: number;
+    grade?: string;
+  };
+  totalTime?: number;
+  status: 'in-progress' | 'completed' | 'abandoned' | 'timed-out';
+  analysis?: IQuizAnalysis;
+  feedback?: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface IQuestion extends Document {
-  _id: Types.ObjectId;
-  type: 'multiple-choice' | 'numerical' | 'text' | 'image-based' | 'drag-drop';
-  question: string;
-  options?: string[];
-  correctAnswer: string | number | string[];
-  explanation: string;
-  image?: string;
-  difficulty: 'easy' | 'medium' | 'hard';
-  concept: string;
-  points: number;
-  hints?: string[];
-  timeLimit?: number; // in seconds
+export interface IQuizAnalysis {
+  overallPerformance: {
+    score: number;
+    grade: string;
+    percentile?: number;
+  };
+  strengths: Array<{
+    concept: string;
+    confidence: number;
+    reasoning: string;
+  }>;
+  weaknesses: Array<{
+    concept: string;
+    severity: 'low' | 'medium' | 'high';
+    reasoning: string;
+    suggestions: string[];
+  }>;
+  conceptAnalysis: Array<{
+    concept: string;
+    questionsTotal: number;
+    questionsCorrect: number;
+    accuracy: number;
+    averageTime: number;
+  }>;
+  timeAnalysis: {
+    totalTime: number;
+    averageTimePerQuestion: number;
+    timeEfficiency: 'too-fast' | 'optimal' | 'too-slow';
+  };
+  recommendations: Array<{
+    type: 'study-topic' | 'practice-more' | 'review-concept' | 'time-management';
+    priority: 'low' | 'medium' | 'high';
+    description: string;
+    resources?: Array<{
+      title: string;
+      url: string;
+      type: 'article' | 'video' | 'practice' | 'course';
+    }>;
+  }>;
+  aiInsights: {
+    learningStyle?: 'visual' | 'auditory' | 'kinesthetic' | 'reading-writing';
+    cognitiveLoad?: 'low' | 'medium' | 'high';
+    confidenceLevel?: 'low' | 'medium' | 'high';
+    nextSteps: string[];
+  };
+  generatedAt: Date;
 }
 
 // Quiz Result Types

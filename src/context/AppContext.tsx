@@ -8,6 +8,10 @@ interface AppContextType {
   setUser: (user: User | null) => void;
   currentCourse: Course | null;
   setCurrentCourse: (course: Course | null) => void;
+  currentTopic: string | null;
+  setCurrentTopic: (topic: string | null) => void;
+  currentSubject: string | null;
+  setCurrentSubject: (subject: string | null) => void;
   chatMessages: ChatMessage[];
   setChatMessages: (messages: ChatMessage[]) => void;
   addChatMessage: (message: ChatMessage) => void;
@@ -39,6 +43,8 @@ export const useApp = () => {
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [currentCourse, setCurrentCourse] = useState<Course | null>(null);
+  const [currentTopic, setCurrentTopic] = useState<string | null>(null);
+  const [currentSubject, setCurrentSubject] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [teachingMode, setTeachingMode] = useState<TeachingMode>('normal');
   const [learningMode, setLearningMode] = useState<LearningMode>('teaching');
@@ -128,6 +134,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setUser: enhancedSetUser,
     currentCourse,
     setCurrentCourse,
+    currentTopic,
+    setCurrentTopic,
+    currentSubject,
+    setCurrentSubject,
     chatMessages,
     setChatMessages,
     addChatMessage,

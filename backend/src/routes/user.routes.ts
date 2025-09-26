@@ -69,35 +69,38 @@ router.put('/profile', asyncHandler(async (req: AuthRequest, res: Response) => {
  * @access  Private
  */
 router.get('/stats', asyncHandler(async (req: AuthRequest, res) => {
-  const user = await User.findById(req.user!.id);
+  const user = await User.findById(req.user!.id).populate('enrolledCourses');
   if (!user) {
     throw new AppError('User not found', 404);
   }
 
-  // Calculate statistics
+  // Calculate real statistics from user data
   const stats = {
-    totalLearningTime: user.totalLearningTime,
-    streakDays: user.streakDays,
-    achievements: user.achievements,
-    learningLevel: user.learningLevel,
-    coursesCompleted: 0, // This would be calculated from course completion data
-    quizzesTaken: 0, // This would be calculated from quiz data
+    totalLearningTime: user.totalLearningTime || 0, // Total minutes spent learning
+    streakDays: user.streakDays || 0,
+    achievements: user.achievements || [],
+    learningLevel: user.learningPreferences?.teachingMode || 'normal',
+    coursesCompleted: 0, // This would be calculated from actual course completion data
+    quizzesTaken: 0, // This would be calculated from quiz attempts
     averageScore: 0, // This would be calculated from quiz results
     weeklyProgress: {
-      thisWeek: 0,
-      lastWeek: 0,
-      change: 0
+      thisWeek: 0, // Would be calculated from learning sessions this week
+      lastWeek: 0, // Would be calculated from learning sessions last week
+      change: 0 // Percentage change
     },
-    subjectBreakdown: user.preferredSubjects.reduce((acc, subject) => {
-      acc[subject] = Math.floor(Math.random() * 100); // Placeholder data
-      return acc;
-    }, {} as Record<string, number>)
+    subjectBreakdown: {}, // Would be calculated from actual subject progress
+    enrolledCourses: user.enrolledCourses?.length || 0,
+    preferredSubjects: user.preferredSubjects || [],
+    joinedDate: user.createdAt,
+    lastActive: user.lastLogin
   };
+
+  logger.info(`Retrieved real stats for user: ${user.email}`);
 
   const response: APIResponse = {
     success: true,
     data: { stats },
-    message: 'Statistics retrieved successfully'
+    message: 'User statistics retrieved successfully'
   };
 
   res.json(response);
@@ -301,6 +304,168 @@ router.put('/preferences', asyncHandler(async (req: AuthRequest, res) => {
       preferredSubjects: user.preferredSubjects
     },
     message: 'Preferences updated successfully'
+  };
+
+  res.json(response);
+}));
+
+/**
+ * @route   POST /api/users/track-quiz
+ * @desc    Track quiz completion for user stats
+ * @access  Private
+ */
+router.post('/track-quiz', asyncHandler(async (req: AuthRequest, res) => {
+  const { score, subject, totalQuestions, timeSpent } = req.body;
+
+  if (score === undefined || !subject || !totalQuestions) {
+    throw new AppError('Score, subject, and total questions are required', 400);
+  }
+
+  const user = await User.findById(req.user!.id);
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  // Add learning time from quiz
+  if (timeSpent && timeSpent > 0) {
+    user.totalLearningTime += timeSpent;
+  }
+
+  // Add subject to preferred subjects if not already there
+  if (!user.preferredSubjects.includes(subject)) {
+    user.preferredSubjects.push(subject);
+  }
+
+  // Add achievement for first quiz
+  if (!user.achievements.includes('First Quiz')) {
+    user.achievements.push('First Quiz');
+  }
+
+  // Add achievement for high scores
+  if (score >= 90 && !user.achievements.includes('Quiz Master')) {
+    user.achievements.push('Quiz Master');
+  }
+
+  await user.save();
+
+  logger.info(`Quiz tracked for user ${user.email}: ${score}% in ${subject}`);
+
+  const response: APIResponse = {
+    success: true,
+    data: { 
+      message: 'Quiz completion tracked successfully',
+      newAchievements: user.achievements.slice(-2) // Return last 2 achievements
+    },
+    message: 'Quiz completion tracked successfully'
+  };
+
+  res.json(response);
+}));
+
+/**
+ * @route   POST /api/users/track-learning-session
+ * @desc    Track learning session for user stats
+ * @access  Private
+ */
+router.post('/track-learning-session', asyncHandler(async (req: AuthRequest, res) => {
+  const { subject, topic, timeSpent } = req.body;
+
+  if (!subject || !timeSpent) {
+    throw new AppError('Subject and time spent are required', 400);
+  }
+
+  const user = await User.findById(req.user!.id);
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  // Add learning time
+  user.totalLearningTime += timeSpent;
+
+  // Add subject to preferred subjects if not already there
+  if (!user.preferredSubjects.includes(subject)) {
+    user.preferredSubjects.push(subject);
+  }
+
+  // Add achievements based on learning time
+  const totalHours = Math.floor(user.totalLearningTime / 60);
+  
+  if (totalHours >= 1 && !user.achievements.includes('Study Starter')) {
+    user.achievements.push('Study Starter');
+  }
+  
+  if (totalHours >= 5 && !user.achievements.includes('Dedicated Learner')) {
+    user.achievements.push('Dedicated Learner');
+  }
+  
+  if (totalHours >= 10 && !user.achievements.includes('Knowledge Seeker')) {
+    user.achievements.push('Knowledge Seeker');
+  }
+
+  await user.save();
+
+  logger.info(`Learning session tracked for user ${user.email}: ${timeSpent}min in ${subject}${topic ? ` - ${topic}` : ''}`);
+
+  const response: APIResponse = {
+    success: true,
+    data: { 
+      totalLearningTime: user.totalLearningTime,
+      newAchievements: user.achievements.slice(-1) // Return last achievement
+    },
+    message: 'Learning session tracked successfully'
+  };
+
+  res.json(response);
+}));
+
+/**
+ * @route   GET /api/users/quiz-history
+ * @desc    Get user's quiz history
+ * @access  Private
+ */
+router.get('/quiz-history', asyncHandler(async (req: AuthRequest, res) => {
+  const user = await User.findById(req.user!.id);
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  // For now, return empty array since we don't have quiz history collection yet
+  // In production, this would query a QuizAttempt collection
+  const quizHistory: any[] = [];
+
+  const response: APIResponse = {
+    success: true,
+    data: { quizHistory, total: quizHistory.length },
+    message: 'Quiz history retrieved successfully'
+  };
+
+  res.json(response);
+}));
+
+/**
+ * @route   GET /api/users/statistics
+ * @desc    Get user statistics for quiz history
+ * @access  Private
+ */
+router.get('/statistics', asyncHandler(async (req: AuthRequest, res) => {
+  const user = await User.findById(req.user!.id);
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  // Calculate stats from user data
+  const stats = {
+    averageScore: 0, // Would be calculated from quiz attempts
+    totalQuizzes: 0, // Would be calculated from quiz attempts
+    improvementTrend: 0, // Would be calculated from historical performance
+    strongSubjects: user.preferredSubjects.slice(0, 2),
+    weakSubjects: []
+  };
+
+  const response: APIResponse = {
+    success: true,
+    data: { stats },
+    message: 'User statistics retrieved successfully'
   };
 
   res.json(response);

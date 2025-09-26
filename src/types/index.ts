@@ -72,5 +72,50 @@ export interface QuizResult {
   answers: { questionId: string; answer: string | number; correct: boolean }[];
 }
 
+export interface QuizAttempt {
+  id?: string;
+  quizId: string;
+  attemptId: string;
+  title: string;
+  subject: string;
+  topic?: string;
+  difficulty: 'easy' | 'intermediate' | 'hard';
+  score: {
+    raw: number;
+    percentage: number;
+    grade: string;
+  };
+  completedAt: Date;
+  status: 'completed' | 'in-progress' | 'abandoned';
+  userId?: string;
+}
+
+export interface QuizHistoryItem {
+  quizId: string;
+  title: string;
+  subject: string;
+  topic?: string;
+  difficulty: 'easy' | 'intermediate' | 'hard';
+  totalAttempts: number;
+  bestScore: {
+    raw: number;
+    percentage: number;
+    grade: string;
+  };
+  lastAttempt: {
+    _id: string;
+    completedAt: Date;
+    score: {
+      raw: number;
+      percentage: number;
+      grade: string;
+    };
+    status: 'completed' | 'in-progress' | 'abandoned';
+  };
+  averageScore: number;
+  passed: boolean;
+  canRetake: boolean;
+}
+
 export type TeachingMode = 'beginner' | 'normal' | 'advanced';
 export type LearningMode = 'teaching' | 'chat';

@@ -13,8 +13,10 @@ class AIService {
     }
     
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    // Use a stable model name that's known to work
+    const modelName = 'gemini-2.5-flash';
     this.model = this.genAI.getGenerativeModel({ 
-      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+      model: modelName,
       generationConfig: {
         temperature: 0.7,
         topP: 0.8,
@@ -23,7 +25,7 @@ class AIService {
       }
     });
     this.chatModel = this.genAI.getGenerativeModel({ 
-      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+      model: modelName,
       generationConfig: {
         temperature: 0.9,
         topP: 0.95,
@@ -75,22 +77,74 @@ class AIService {
   ): Promise<AIResponse> {
     try {
       const prompt = this.buildTeachingPrompt(message, context);
-      
       const result = await this.chatModel.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
-      
       // Analyze the response for adaptive features
       const aiResponse = await this.analyzeTeachingResponse(text, message, context);
-      
       logger.info(`Generated teaching response for topic: ${context.currentTopic}`);
       return aiResponse;
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Error generating teaching response:', error);
+      if (error.message && error.message.includes('404 Not Found')) {
+        throw new Error('The selected AI model is not available. Please check your configuration or try again later.');
+      }
       throw new Error('Failed to generate teaching response');
     }
   }
 
+  /**
+   * Generate quiz based on chat context and conversation
+   */
+  async generateQuiz(options: {
+    subject: string;
+    topic: string;
+    difficulty: 'beginner' | 'intermediate' | 'advanced';
+    questionCount: number;
+    questionTypes: string[];
+    conversationContext: string;
+    conceptsCovered: string[];
+    userId: string;
+  }): Promise<any> {
+    try {
+      const prompt = this.buildContextualQuizPrompt(options);
+      
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      
+      logger.info(`Generated contextual quiz for ${options.subject} - ${options.topic}`);
+      return this.parseContextualQuiz(text, options);
+    } catch (error) {
+      logger.error('Error generating contextual quiz:', error);
+      throw new Error('Failed to generate quiz based on conversation context');
+    }
+  }
+
+  /**
+   * Generate detailed quiz analysis and performance report
+   */
+  async generateQuizAnalysis(options: {
+    quiz: any;
+    answers: any[];
+    score: any;
+    timeSpent: number;
+    userId: string;
+  }): Promise<any> {
+    try {
+      const prompt = this.buildQuizAnalysisPrompt(options);
+      
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      
+      logger.info(`Generated quiz analysis for user ${options.userId}`);
+      return this.parseQuizAnalysis(text, options);
+    } catch (error) {
+      logger.error('Error generating quiz analysis:', error);
+      throw new Error('Failed to generate quiz analysis');
+    }
+  }
   /**
    * Generate quiz questions based on course content
    */
@@ -241,38 +295,78 @@ Ensure the course is engaging, educational, and appropriate for the ${educationL
       teachingMode: TeachingMode;
       previousConcepts: string[];
       userProgress: any;
+      learningMode?: string;
+      isConversational?: boolean;
     }
   ): string {
+    // Handle conversational mode differently
+    if (context.isConversational || context.learningMode === 'chat') {
+      return `You are Sarah, a friendly and knowledgeable AI assistant who enjoys casual conversations about learning.
+
+Student's message: "${message}"
+Current topic context: ${context.currentTopic}
+Difficulty level: ${context.difficulty}
+
+Your Conversational Style:
+- Be natural and friendly, like chatting with a knowledgeable friend
+- Don't automatically assume they want a formal lesson
+- Respond appropriately to their actual question or comment
+- If they ask something educational, explain it clearly but conversationally
+- If they're just chatting, chat back naturally while staying helpful
+- Keep responses focused and not overly lengthy (100-300 words)
+- Don't push formal teaching unless they specifically ask for it
+
+Important: Respond to what they actually said, not what you think they might want to learn. If they say "hi", just say hi back and ask how you can help. If they ask about a topic, explain it naturally.`;
+    }
+
+    // Formal teaching mode
     const modeInstructions = {
-      beginner: "Use simple language, provide lots of examples, and explain every concept step by step.",
-      normal: "Balance between detailed explanations and practical examples. Assume some basic knowledge.",
-      advanced: "Use technical language, focus on complex concepts, and provide challenging examples.",
-      toddler: "Use extremely simple language, real-life analogies, and break everything down to the most basic level. Use stories and familiar objects to explain concepts."
+      beginner: "Use simple, conversational language like a friendly teacher. Start with 'Let me explain this in simple terms...' or 'Think of it this way...' Provide lots of real-world examples and encourage questions.",
+      normal: "Be like an experienced teacher who knows how to make complex topics accessible. Use phrases like 'You know how...' or 'This is similar to...' Balance theory with practical examples.",
+      advanced: "Act like a knowledgeable professor who respects the student's intelligence. Use precise terminology but explain it clearly. Start with 'Let's dive deeper into...' or 'Consider this perspective...'",
+      toddler: "Be like a patient kindergarten teacher. Use phrases like 'Imagine if...' or 'You know when you...' Make everything relatable to things they know from daily life."
     };
 
-    return `You are an expert AI tutor helping a student learn "${context.currentTopic}".
+    const conversationalStarters = {
+      beginner: ["Let me break this down for you", "Think of it this way", "Here's a simple way to understand this"],
+      normal: ["You know how", "This is similar to", "Let me show you how this works"],
+      advanced: ["Let's explore this concept", "Consider this perspective", "Here's what's really happening"],
+      toddler: ["Imagine if", "You know when you", "Let's pretend that"]
+    };
 
-Current Context:
+    const randomStarter = conversationalStarters[context.teachingMode][
+      Math.floor(Math.random() * conversationalStarters[context.teachingMode].length)
+    ];
+
+    return `You are Sarah, an experienced and passionate teacher who genuinely cares about helping students succeed. You're currently helping a student understand "${context.currentTopic}".
+
+Current Learning Session:
 - Topic: ${context.currentTopic}
-- Difficulty: ${context.difficulty}
+- Student's Level: ${context.difficulty}
 - Teaching Mode: ${context.teachingMode}
-- Previous Concepts: ${context.previousConcepts.join(', ')}
-- Student Message: "${message}"
+- Previous Concepts Covered: ${context.previousConcepts.join(', ')}
+- Student's Question/Message: "${message}"
 
-Instructions:
+Your Teaching Personality:
+- Warm, encouraging, and patient - like the best teacher students remember
+- Use natural, conversational language (start with "${randomStarter}...")
+- Show genuine enthusiasm for the subject
+- Celebrate small wins and progress
+- Make connections to things students already know
+
+Teaching Approach for ${context.teachingMode} mode:
 ${modeInstructions[context.teachingMode]}
 
-Guidelines:
-1. Be encouraging and supportive
-2. Use real-world examples when possible
-3. Check for understanding
-4. Adapt your explanation if the student seems confused
-5. Suggest practice problems or next steps
-6. Keep responses concise but thorough (max 500 words)
+Response Guidelines:
+1. Start with a warm, encouraging tone
+2. Use the suggested conversational starter naturally
+3. Provide clear explanations with relatable examples
+4. Ask engaging questions to check understanding
+5. Suggest concrete next steps or practice opportunities
+6. Keep responses focused but comprehensive (300-500 words)
+7. If off-topic, gently redirect with: "That's an interesting question! Let's first master [current topic], then we can explore that..."
 
-If the student asks a question not related to the current topic, gently guide them back while still being helpful.
-
-Respond as a knowledgeable, patient, and encouraging teacher would.`;
+Remember: You're not just providing information - you're inspiring learning and building confidence. Respond as Sarah would in her classroom.`;
   }
 
   /**
@@ -284,41 +378,81 @@ Respond as a knowledgeable, patient, and encouraging teacher would.`;
     questionCount: number,
     questionTypes: string[]
   ): string {
-    return `Create a comprehensive quiz based on this course content:
+    // Check if this is context-based from a learning session
+    const hasLearningContext = courseContent.includes('Learning Session Context:') || 
+                               courseContent.includes('Recent Learning Context:');
+    
+    const basePrompt = `You are Sarah, an experienced teacher creating a ${hasLearningContext ? 'contextual review' : 'comprehensive'} quiz to assess student understanding.
 
-Course Content:
+Learning Context:
 ${courseContent}
 
-Requirements:
-- Generate ${questionCount} questions
-- Difficulty: ${difficulty}
-- Question types: ${questionTypes.join(', ')}
-- Cover all major concepts
-- Include detailed explanations for answers
-- Mix different difficulty levels within the specified range
+Quiz Requirements:
+- Generate EXACTLY ${questionCount} high-quality questions
+- Difficulty Level: ${difficulty}
+- Question Types: ${questionTypes.join(', ')}
+- Focus on practical understanding, not just memorization`;
 
-Format as JSON:
+    const contextSpecificInstructions = hasLearningContext ? `
+
+IMPORTANT - Learning Session Based Quiz:
+Since this quiz is based on a specific learning session, create questions that:
+1. Directly test concepts that were explained in the session
+2. Reference examples, analogies, or scenarios discussed
+3. Build on the teaching progression shown in the context
+4. Focus on areas where the student engaged or asked questions
+5. Test application of specifically taught methods or approaches
+6. Avoid concepts not covered in the learning session
+
+Question Strategy:
+- 40% questions on core concepts explicitly taught
+- 30% questions applying taught concepts to new scenarios  
+- 20% questions connecting different parts of the lesson
+- 10% questions testing deeper understanding of key points` : `
+
+Standard Quiz Strategy:
+Create a well-rounded assessment covering:
+- Basic understanding and definitions (30%)
+- Application and problem-solving (40%) 
+- Analysis and critical thinking (30%)`;
+
+    return `${basePrompt}${contextSpecificInstructions}
+
+Create questions that:
+1. Test real understanding of concepts (not just definitions)
+2. Include scenario-based problems when appropriate  
+3. Progress from basic recall to application/analysis
+4. Are clearly worded and unambiguous
+5. Have educational value beyond just testing
+${hasLearningContext ? '6. Stay relevant to the specific learning session content' : ''}
+
+Format as valid JSON:
 {
   "questions": [
     {
       "type": "multiple-choice",
-      "question": "Question text",
+      "question": "Clear, specific question text that tests understanding",
       "options": ["Option A", "Option B", "Option C", "Option D"],
       "correctAnswer": "Option A",
-      "explanation": "Detailed explanation",
-      "concept": "Main concept being tested",
+      "explanation": "Detailed explanation that teaches why this is correct and why others are wrong",
+      "concept": "Specific concept being tested",
       "difficulty": "easy|medium|hard",
-      "points": 1
+      "points": 1,
+      ${hasLearningContext ? '"sessionRelevant": true,' : ''}
+      "learningObjective": "What this question assesses"
     }
   ]
 }
 
-Ensure questions are:
-1. Clear and unambiguous
-2. Educational and meaningful
-3. Appropriately challenging for ${difficulty} level
-4. Cover different aspects of the content
-5. Have detailed, educational explanations`;
+Quality Standards:
+- Questions should feel like they come from a real teacher who cares about student learning
+- Explanations should be educational, not just confirmatory
+- Mix factual knowledge with application and critical thinking
+- Ensure questions are appropriate for ${difficulty} level students
+- Avoid trick questions or overly technical language unless at advanced level
+${hasLearningContext ? '- Ensure questions directly relate to the learning session content' : ''}
+
+Remember: This quiz should help students ${hasLearningContext ? 'review and reinforce what they just learned' : 'learn, not just test them'}.`;
   }
 
   /**
@@ -470,13 +604,33 @@ Keywords indicating confidence: "got it", "easy", "understand", "clear", "makes 
    */
   private parseQuizQuestions(text: string): any {
     try {
+      logger.info('Parsing AI response for quiz questions...');
+      logger.debug('Raw AI response:', text.substring(0, 500) + '...');
+      
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        const parsed = JSON.parse(jsonMatch[0]);
+        
+        // Validate the structure
+        if (!parsed.questions || !Array.isArray(parsed.questions)) {
+          logger.error('Invalid quiz format: missing questions array');
+          throw new Error('AI response missing questions array');
+        }
+        
+        if (parsed.questions.length === 0) {
+          logger.error('Invalid quiz format: empty questions array');
+          throw new Error('AI response contains no questions');
+        }
+        
+        logger.info(`Successfully parsed ${parsed.questions.length} questions`);
+        return parsed;
       }
+      
+      logger.error('No JSON found in AI response');
       throw new Error('No JSON found in response');
     } catch (error) {
       logger.error('Error parsing quiz questions:', error);
+      logger.error('Failed response text:', text);
       throw new Error('Failed to parse quiz questions');
     }
   }
@@ -516,6 +670,173 @@ Keywords indicating confidence: "got it", "easy", "understand", "clear", "makes 
     } catch (error) {
       logger.error('Error parsing sentiment analysis:', error);
       return { sentiment: 'neutral', shouldAdapt: false };
+    }
+  }
+
+  /**
+   * Build contextual quiz generation prompt
+   */
+  private buildContextualQuizPrompt(options: {
+    subject: string;
+    topic: string;
+    difficulty: 'beginner' | 'intermediate' | 'advanced';
+    questionCount: number;
+    questionTypes: string[];
+    conversationContext: string;
+    conceptsCovered: string[];
+    userId: string;
+  }): string {
+    return `You are an expert AI educator creating a personalized quiz based on a student's learning conversation.
+
+CONTEXT:
+- Subject: ${options.subject}
+- Topic: ${options.topic}  
+- Difficulty: ${options.difficulty}
+- Required Questions: ${options.questionCount}
+- Question Types: ${options.questionTypes.join(', ')}
+
+STUDENT'S LEARNING CONVERSATION:
+${options.conversationContext || 'No conversation context available'}
+
+CONCEPTS COVERED:
+${options.conceptsCovered.length > 0 ? options.conceptsCovered.join(', ') : 'General topics'}
+
+TASK:
+Generate a comprehensive quiz with exactly ${options.questionCount} questions that:
+1. Tests understanding of concepts discussed in the conversation
+2. Includes various question types: ${options.questionTypes.join(', ')}
+3. Matches ${options.difficulty} difficulty level
+4. Provides clear explanations for each answer
+5. Focuses on practical application of learned concepts
+
+RESPONSE FORMAT:
+Return a valid JSON object with this exact structure:
+{
+  "title": "Quiz title based on conversation topics",
+  "description": "Brief description of what this quiz tests",
+  "questions": [
+    {
+      "id": "q1",
+      "type": "multiple-choice",
+      "question": "Question text here",
+      "options": [
+        {"id": "a", "text": "Option A", "isCorrect": false},
+        {"id": "b", "text": "Option B", "isCorrect": true},
+        {"id": "c", "text": "Option C", "isCorrect": false},
+        {"id": "d", "text": "Option D", "isCorrect": false}
+      ],
+      "correctAnswer": "b",
+      "explanation": "Detailed explanation of why this answer is correct",
+      "difficulty": "easy",
+      "points": 1,
+      "concepts": ["concept1", "concept2"],
+      "timeEstimate": 60
+    }
+  ]
+}
+
+IMPORTANT: Return ONLY the JSON object, no additional text or formatting.`;
+  }
+
+  /**
+   * Build quiz analysis prompt
+   */
+  private buildQuizAnalysisPrompt(options: {
+    quiz: any;
+    answers: any[];
+    score: any;
+    timeSpent: number;
+    userId: string;
+  }): string {
+    const questionDetails = options.quiz.questions.map((q: any, index: number) => {
+      const answer = options.answers[index];
+      return `Question ${index + 1}: ${q.question}
+Type: ${q.type}
+Correct: ${answer?.isCorrect ? 'Yes' : 'No'}
+Time: ${answer?.timeSpent || 0}s`;
+    }).join('\n\n');
+
+    return `Analyze quiz performance and return JSON with performance insights, strengths, weaknesses, and recommendations.
+
+QUIZ: ${options.quiz.subject} - ${options.quiz.topic}
+SCORE: ${options.score.percentage}% 
+TIME: ${Math.round(options.timeSpent / 60)} minutes
+
+RESPONSES:
+${questionDetails}
+
+Return JSON with analysis structure including overallPerformance, strengths, weaknesses, recommendations, and aiInsights.`;
+  }
+
+  /**
+   * Parse contextual quiz response
+   */
+  private parseContextualQuiz(text: string, options: any): any {
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        
+        // Ensure all questions have required fields
+        if (parsed.questions && Array.isArray(parsed.questions)) {
+          parsed.questions = parsed.questions.map((q: any, index: number) => ({
+            ...q,
+            id: q.id || `q${index + 1}`,
+            concepts: q.concepts || [options.topic],
+            timeEstimate: q.timeEstimate || 60
+          }));
+        }
+        
+        return parsed;
+      }
+      throw new Error('No valid JSON found in AI response');
+    } catch (error) {
+      logger.error('Error parsing contextual quiz:', error);
+      throw new Error('Failed to parse quiz from AI response');
+    }
+  }
+
+  /**
+   * Parse quiz analysis response
+   */
+  private parseQuizAnalysis(text: string, options: any): any {
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      throw new Error('No valid JSON found');
+    } catch (error) {
+      logger.error('Error parsing quiz analysis:', error);
+      // Return basic analysis if parsing fails
+      return {
+        overallPerformance: {
+          score: options.score.percentage,
+          grade: options.score.grade,
+          percentile: 50
+        },
+        strengths: [],
+        weaknesses: [],
+        conceptAnalysis: [],
+        timeAnalysis: {
+          totalTime: options.timeSpent,
+          averageTimePerQuestion: Math.round(options.timeSpent / options.quiz.questions.length),
+          timeEfficiency: "optimal"
+        },
+        recommendations: [{
+          type: "study-topic",
+          priority: "medium", 
+          description: "Continue practicing with similar questions",
+          resources: []
+        }],
+        aiInsights: {
+          learningStyle: "mixed",
+          cognitiveLoad: "medium",
+          confidenceLevel: "medium", 
+          nextSteps: ["Review incorrect answers", "Practice similar problems"]
+        },
+        generatedAt: new Date().toISOString()
+      };
     }
   }
 }

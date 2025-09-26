@@ -32,15 +32,17 @@ export interface SendMessageRequest {
   currentTopic?: string;
   difficulty?: string;
   type?: 'text' | 'code' | 'equation' | 'image';
+  isGreeting?: boolean;
+  learningMode?: 'teaching' | 'chat';
 }
 
 class ChatService {
   async sendMessage(request: SendMessageRequest): Promise<ChatMessage> {
     try {
-      const response: ApiResponse<ChatMessage> = await apiClient.post('/chat/message', request);
+      const response: ApiResponse<{ message: ChatMessage; sessionId: string; session: any }> = await apiClient.post('/chat/message', request);
       
-      if (response.success && response.data) {
-        return response.data;
+      if (response.success && response.data && response.data.message) {
+        return response.data.message;
       }
       
       throw new Error(response.error || 'Failed to send message');
@@ -179,6 +181,68 @@ class ChatService {
       return response.blob();
     } catch (error) {
       console.error('Export chat history error:', error);
+      throw error;
+    }
+  }
+
+  async getChatSessions(options?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    search?: string;
+  }): Promise<ApiResponse<{
+    sessions: ChatSession[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+    };
+  }>> {
+    try {
+      const params = new URLSearchParams();
+      if (options?.page) params.append('page', options.page.toString());
+      if (options?.limit) params.append('limit', options.limit.toString());
+      if (options?.status) params.append('status', options.status);
+      if (options?.search) params.append('search', options.search);
+
+      const response: ApiResponse<any> = await apiClient.get(`/chat/sessions?${params.toString()}`);
+      return response;
+    } catch (error) {
+      console.error('Get chat sessions error:', error);
+      throw error;
+    }
+  }
+
+  async updateChatSession(sessionId: string, updates: {
+    status?: 'active' | 'paused' | 'completed' | 'archived';
+    title?: string;
+  }): Promise<ApiResponse<ChatSession>> {
+    try {
+      const response: ApiResponse<ChatSession> = await apiClient.put(`/chat/session/${sessionId}`, updates);
+      return response;
+    } catch (error) {
+      console.error('Update chat session error:', error);
+      throw error;
+    }
+  }
+
+  async deleteChatSession(sessionId: string): Promise<ApiResponse<void>> {
+    try {
+      const response: ApiResponse<void> = await apiClient.delete(`/chat/session/${sessionId}`);
+      return response;
+    } catch (error) {
+      console.error('Delete chat session error:', error);
+      throw error;
+    }
+  }
+
+  async getChatSession(sessionId: string): Promise<ApiResponse<{ session: ChatSession }>> {
+    try {
+      const response: ApiResponse<{ session: ChatSession }> = await apiClient.get(`/chat/session/${sessionId}`);
+      return response;
+    } catch (error) {
+      console.error('Get chat session error:', error);
       throw error;
     }
   }

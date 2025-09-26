@@ -5,10 +5,12 @@ import { Button } from '../ui/Button';
 import { useApp } from '../../context/AppContext';
 import { ChatMessage } from '../../types';
 import { CourseOutline } from './CourseOutline';
+import { TypingMarkdown } from './TypingMarkdown';
 import { chatService } from '../../services/chatService';
+import { userService } from '../../services/userService';
 
 interface ChatInterfaceProps {
-  onGenerateQuiz?: (subject?: string, difficulty?: string) => void;
+  onGenerateQuiz?: (subject?: string, difficulty?: string, topic?: string, chatContext?: string) => void;
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) => {
@@ -23,11 +25,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
     setIsRecording,
     sidebarOpen,
     setSidebarOpen,
-    currentCourse
+    currentCourse,
+    currentTopic,
+    setCurrentTopic,
+    currentSubject,
+    setCurrentSubject
   } = useApp();
 
   const [message, setMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [currentlyTypingMessageId, setCurrentlyTypingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -38,6 +45,66 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
 
   const handleSendMessage = async () => {
     if (!message.trim()) return;
+
+    // Check if message is a simple greeting
+    const isGreeting = (msg: string): boolean => {
+      const greetings = [
+        /^hi$/i, /^hello$/i, /^hey$/i, /^hiya$/i, /^good morning$/i, 
+        /^good afternoon$/i, /^good evening$/i, /^what's up$/i, /^wassup$/i,
+        /^how are you$/i, /^how's it going$/i, /^what's up$/i
+      ];
+      
+      return greetings.some(pattern => pattern.test(msg.trim()));
+    };
+
+    // Extract topic information from the message (only for non-greetings)
+    const extractTopicFromMessage = (msg: string): string | null => {
+      if (isGreeting(msg)) return null;
+      
+      const topicPatterns = [
+        /teach me about (.+)/i,
+        /explain (.+)/i,
+        /what is (.+)/i,
+        /help me with (.+)/i,
+        /i want to learn (.+)/i,
+        /can you teach (.+)/i
+      ];
+      
+      for (const pattern of topicPatterns) {
+        const match = msg.match(pattern);
+        if (match) {
+          return match[1].trim();
+        }
+      }
+      return null;
+    };
+
+    // Extract subject from message (only for non-greetings)
+    const extractSubjectFromMessage = (msg: string): string | null => {
+      if (isGreeting(msg)) return null;
+      
+      const subjects = ['mathematics', 'physics', 'chemistry', 'biology', 'computer science', 'literature'];
+      const lowerMsg = msg.toLowerCase();
+      
+      for (const subject of subjects) {
+        if (lowerMsg.includes(subject)) {
+          return subject.charAt(0).toUpperCase() + subject.slice(1);
+        }
+      }
+      return null;
+    };
+
+    // Update current topic and subject based on user message (only for non-greetings)
+    const detectedTopic = extractTopicFromMessage(message);
+    const detectedSubject = extractSubjectFromMessage(message);
+    
+    if (detectedTopic) {
+      setCurrentTopic(detectedTopic);
+    }
+    
+    if (detectedSubject) {
+      setCurrentSubject(detectedSubject);
+    }
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -55,19 +122,38 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
       const aiResponse = await chatService.sendMessage({
         message: message,
         sessionId: undefined, // Will be handled by backend
-        subject: currentCourse?.subject,
-        currentTopic: currentCourse?.subject,
-        difficulty: 'intermediate'
+        subject: detectedSubject || currentSubject || currentCourse?.subject || 'General',
+        currentTopic: detectedTopic || currentTopic || 'General Learning',
+        difficulty: teachingMode,
+        isGreeting: isGreeting(message),
+        learningMode: learningMode
       });
 
+      const aiMessageId = (Date.now() + 1).toString();
+      setCurrentlyTypingMessageId(aiMessageId);
+
       const aiMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        content: aiResponse.content,
+        id: aiMessageId,
+        content: aiResponse.content || 'No response content received',
         isUser: false,
         timestamp: new Date()
       };
       
       addChatMessage(aiMessage);
+
+      // Track learning session only for non-greeting interactions
+      if (!isGreeting(message)) {
+        const sessionTime = 2;
+        const subject = detectedSubject || currentSubject || currentCourse?.subject || 'General';
+        const topic = detectedTopic || currentTopic || undefined;
+
+        try {
+          await userService.trackLearningSession(subject, sessionTime, topic);
+          console.log(`Tracked learning session: ${sessionTime}min in ${subject}${topic ? ` - ${topic}` : ''}`);
+        } catch (error) {
+          console.error('Failed to track learning session:', error);
+        }
+      }
     } catch (error) {
       console.error('Failed to get AI response:', error);
       const errorMessage: ChatMessage = {
@@ -79,6 +165,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
       addChatMessage(errorMessage);
     } finally {
       setIsTyping(false);
+      setCurrentlyTypingMessageId(null);
     }
   };
 
@@ -126,15 +213,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
                   {sidebarOpen ? 'Close' : 'Menu'}
                 </Button>
               )}
-              <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2">
                 <div className="bg-blue-100 p-2 rounded-lg">
                   <Brain className="text-blue-600" size={20} />
                 </div>
                 <div>
                   <h2 className="font-semibold text-gray-900">AI Tutor</h2>
-                  <p className="text-sm text-gray-500">
-                    {learningMode === 'teaching' ? 'Teaching Mode' : 'Chat Mode'} • {teachingMode} level
-                  </p>
+                  {(currentTopic || currentSubject) && (
+                    <p className="text-sm text-gray-600">
+                      {currentTopic ? `Learning: ${currentTopic}` : 
+                       currentSubject ? `Subject: ${currentSubject}` : ''}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -160,8 +250,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
                       ? 'bg-blue-600 text-white shadow-sm' 
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
+                  title="Structured teaching with step-by-step lessons"
                 >
-                  Teaching
+                  📚 Teaching
                 </button>
                 <button
                   onClick={() => setLearningMode('chat')}
@@ -170,20 +261,36 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
                       ? 'bg-blue-600 text-white shadow-sm' 
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
+                  title="Direct Q&A conversation style"
                 >
-                  Chat
+                  💬 Chat
                 </button>
               </div>
 
-              {/* Generate Quiz Button */}
-              {onGenerateQuiz && (
+              {/* Generate Quiz Button - Only show in teaching mode */}
+              {onGenerateQuiz && learningMode === 'teaching' && (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => onGenerateQuiz(currentCourse?.subject)}
+                  onClick={() => {
+                    const subject = currentSubject || currentCourse?.subject || 'Mathematics';
+                    const difficulty = teachingMode === 'beginner' ? 'easy' : 
+                                     teachingMode === 'advanced' ? 'hard' : 'intermediate';
+                    const topic = currentTopic || undefined;
+                    
+                    // Create relevant chat context from recent messages
+                    const recentMessages = chatMessages.slice(-5).map(msg => 
+                      `${msg.isUser ? 'Student' : 'AI'}: ${msg.content}`
+                    ).join('\n');
+                    
+                    onGenerateQuiz(subject, difficulty, topic, recentMessages);
+                  }}
                   className="ml-2"
                 >
-                  Generate Quiz
+                  {currentTopic ? `Quiz: ${currentTopic}` : 
+                   currentSubject ? `Quiz: ${currentSubject}` : 
+                   currentCourse?.subject ? `Quiz: ${currentCourse.subject}` : 
+                   'Generate Quiz'}
                 </Button>
               )}
             </div>
@@ -236,7 +343,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
                   ? 'bg-gray-600 text-white rounded-br-md' 
                   : 'bg-blue-600 text-white rounded-bl-md'
               }`}>
-                <p className="text-sm leading-relaxed">{msg.content}</p>
+                {msg.isUser ? (
+                  <p className="text-sm leading-relaxed">{msg.content}</p>
+                ) : (
+                  <TypingMarkdown 
+                    content={msg.content || ''}
+                    typingSpeed={30}
+                    isTyping={currentlyTypingMessageId === msg.id}
+                    onTypingComplete={() => setCurrentlyTypingMessageId(null)}
+                  />
+                )}
                 <p className="text-xs mt-1 opacity-70">
                   {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>

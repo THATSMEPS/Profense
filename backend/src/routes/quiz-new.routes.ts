@@ -1,22 +1,12 @@
 import express from 'express';
 import { asyncHandler } from '../middleware/errorHandler';
-import { AuthRequest, APIResponse, IChatSession } from '../types';
+import { AuthRequest, APIResponse } from '../types';
 import { getAIService } from '../services/ai.service';
 import { logger } from '../utils/logger';
 import { Quiz } from '../models/Quiz';
 import { ChatSession } from '../models/ChatSession';
-import { Document } from 'mongoose';
 
 const router = express.Router();
-
-// Helper function to get a grade from a percentage
-const getGrade = (percentage: number): string => {
-  if (percentage >= 90) return 'A';
-  if (percentage >= 80) return 'B';
-  if (percentage >= 70) return 'C';
-  if (percentage >= 60) return 'D';
-  return 'F';
-};
 
 /**
  * @route   POST /api/quiz/generate
@@ -43,7 +33,7 @@ router.post('/generate', asyncHandler(async (req: AuthRequest, res) => {
   try {
     let conversationContext = '';
     let conceptsCovered: string[] = [];
-    let chatSession: (Document<unknown, {}, IChatSession> & IChatSession) | null = null;
+    let chatSession = null;
     
     // Get context from chat session if provided
     if (sessionId) {
@@ -98,7 +88,7 @@ router.post('/generate', asyncHandler(async (req: AuthRequest, res) => {
         generatedAt: new Date()
       },
       isActive: true,
-      tags: [subject, topic, difficulty].filter(Boolean).map(t => t.toLowerCase())
+      tags: [subject, topic, difficulty].filter(Boolean).map(t => t!.toLowerCase())
     });
     
     await quiz.save();
@@ -199,16 +189,16 @@ router.post('/:quizId/submit', asyncHandler(async (req: AuthRequest, res) => {
       
       if (question.type === 'multiple-choice') {
         const correctOption = question.options?.find(opt => opt.isCorrect);
-        isCorrect = !!(correctOption && answer.userAnswer === correctOption.id);
+        isCorrect = correctOption && answer.userAnswer === correctOption.id;
       } else if (question.type === 'numerical') {
         const userNum = parseFloat(answer.userAnswer);
         const correctNum = parseFloat(question.correctAnswer || '0');
         isCorrect = Math.abs(userNum - correctNum) < 0.01;
       } else if (question.type === 'text') {
-        isCorrect = (answer.userAnswer || '').toLowerCase().trim() === 
+        isCorrect = answer.userAnswer.toLowerCase().trim() === 
                    (question.correctAnswer || '').toLowerCase().trim();
       } else if (question.type === 'true-false') {
-        isCorrect = (answer.userAnswer || '').toLowerCase() === 
+        isCorrect = answer.userAnswer.toLowerCase() === 
                    (question.correctAnswer || '').toLowerCase();
       }
       
@@ -221,7 +211,7 @@ router.post('/:quizId/submit', asyncHandler(async (req: AuthRequest, res) => {
       };
     });
     
-    const score = quiz.calculateScore(processedAnswers);
+    const score = quiz.calculateScore(answers);
     
     // Generate AI analysis
     const aiService = getAIService();
@@ -246,10 +236,9 @@ router.post('/:quizId/submit', asyncHandler(async (req: AuthRequest, res) => {
       feedback: analysis.aiInsights.nextSteps.join(' ')
     };
     
-    quiz.attempts.push(attempt as any); // Mongoose will cast this
+    quiz.attempts.push(attempt);
     await quiz.save();
     
-    const newAttempt = quiz.attempts[quiz.attempts.length - 1];
     const processingTime = Date.now() - startTime;
     
     logger.info(`Quiz submitted by user ${req.user!.id}:`, {
@@ -263,7 +252,7 @@ router.post('/:quizId/submit', asyncHandler(async (req: AuthRequest, res) => {
     const response: APIResponse = {
       success: true,
       data: {
-        attemptId: newAttempt._id,
+        attemptId: attempt._id,
         score,
         analysis,
         feedback: attempt.feedback,
@@ -290,50 +279,178 @@ router.post('/:quizId/submit', asyncHandler(async (req: AuthRequest, res) => {
 }));
 
 /**
+ * @route   GET /api/quiz
+ * @desc    Get all available quizzes for user
+ * @access  Private
+ */
+router.get('/', asyncHandler(async (req: AuthRequest, res) => {
+  const { page = 1, limit = 10, subject, difficulty } = req.query;
+  
+  const filter: any = { isActive: true };
+  if (subject) filter.subject = subject;
+  if (difficulty) filter.difficulty = difficulty;
+  
+  const quizzes = await Quiz.find(filter)
+    .select('-questions.correctAnswer -questions.explanation') // Hide answers
+    .sort({ createdAt: -1 })
+    .limit(parseInt(limit as string) * parseInt(page as string))
+    .skip((parseInt(page as string) - 1) * parseInt(limit as string));
+  
+  const totalQuizzes = await Quiz.countDocuments(filter);
+  
+  const response: APIResponse = {
+    success: true,
+    data: { 
+      quizzes: quizzes.map(quiz => ({
+        id: quiz._id,
+        title: quiz.title,
+        description: quiz.description,
+        subject: quiz.subject,
+        topic: quiz.topic,
+        difficulty: quiz.difficulty,
+        questionCount: quiz.questions.length,
+        timeLimit: quiz.timeLimit,
+        passingScore: quiz.passingScore,
+        statistics: quiz.statistics,
+        createdAt: quiz.createdAt,
+        tags: quiz.tags
+      })),
+      pagination: {
+        page: parseInt(page as string),
+        limit: parseInt(limit as string),
+        total: totalQuizzes,
+        pages: Math.ceil(totalQuizzes / parseInt(limit as string))
+      }
+    },
+    message: 'Quizzes retrieved successfully'
+  };
+
+  res.json(response);
+}));
+
+/**
  * @route   GET /api/quiz/history
- * @desc    Get user's quiz history
+ * @desc    Get user's quiz history with detailed analytics
  * @access  Private
  */
 router.get('/history', asyncHandler(async (req: AuthRequest, res) => {
-  try {
-    const quizzes = await Quiz.find({ 'attempts.userId': req.user!.id })
-      .sort({ 'attempts.completedAt': -1 })
-      .select('title subject topic difficulty attempts');
-
-    const quizHistory = quizzes.flatMap(quiz => 
-      quiz.attempts
-        .filter(attempt => attempt.userId.toString() === req.user!.id.toString())
-        .map(attempt => ({
-          quizId: quiz._id,
-          attemptId: attempt._id,
-          title: quiz.title,
-          subject: quiz.subject,
-          topic: quiz.topic,
-          difficulty: quiz.difficulty,
-          score: attempt.score,
-          completedAt: attempt.completedAt,
-          status: attempt.status
-        }))
-    ).sort((a, b) => {
-      const aTime = a.completedAt?.getTime() || 0;
-      const bTime = b.completedAt?.getTime() || 0;
-      return bTime - aTime;
-    });
+  const { page = 1, limit = 10, subject, difficulty } = req.query;
+  
+  const filter: any = {
+    'attempts.userId': req.user!.id,
+    'attempts.status': 'completed'
+  };
+  
+  if (subject) filter.subject = subject;
+  if (difficulty) filter.difficulty = difficulty;
+  
+  const quizzes = await Quiz.find(filter)
+    .sort({ 'attempts.completedAt': -1 })
+    .limit(parseInt(limit as string) * parseInt(page as string))
+    .skip((parseInt(page as string) - 1) * parseInt(limit as string));
+  
+  const history = quizzes.map(quiz => {
+    const userAttempts = quiz.getUserAttempts(req.user!.id)
+      .filter(attempt => attempt.status === 'completed')
+      .sort((a, b) => b.completedAt!.getTime() - a.completedAt!.getTime());
     
-    const response: APIResponse = {
-      success: true,
-      data: quizHistory,
-      message: 'Quiz history retrieved successfully'
+    const bestAttempt = userAttempts.reduce((best, current) => 
+      (current.score.percentage || 0) > (best.score.percentage || 0) ? current : best
+    );
+    
+    return {
+      quizId: quiz._id,
+      title: quiz.title,
+      subject: quiz.subject,
+      topic: quiz.topic,
+      difficulty: quiz.difficulty,
+      totalAttempts: userAttempts.length,
+      bestScore: bestAttempt.score,
+      lastAttempt: userAttempts[0],
+      averageScore: userAttempts.reduce((sum, attempt) => 
+        sum + (attempt.score.percentage || 0), 0) / userAttempts.length,
+      passed: (bestAttempt.score.percentage || 0) >= quiz.passingScore,
+      canRetake: quiz.canUserAttempt(req.user!.id)
     };
+  });
+  
+  const response: APIResponse = {
+    success: true,
+    data: { 
+      history,
+      summary: {
+        totalQuizzes: history.length,
+        passedQuizzes: history.filter(h => h.passed).length,
+        averageScore: history.reduce((sum, h) => sum + h.averageScore, 0) / history.length || 0,
+        totalAttempts: history.reduce((sum, h) => sum + h.totalAttempts, 0)
+      }
+    },
+    message: 'Quiz history retrieved successfully'
+  };
 
-    res.json(response);
-  } catch (error) {
-    logger.error('Error fetching quiz history:', error);
-    res.status(500).json({
+  res.json(response);
+}));
+
+/**
+ * @route   GET /api/quiz/:quizId
+ * @desc    Get specific quiz for taking (without answers)
+ * @access  Private
+ */
+router.get('/:quizId', asyncHandler(async (req: AuthRequest, res) => {
+  const { quizId } = req.params;
+  
+  const quiz = await Quiz.findById(quizId);
+  
+  if (!quiz || !quiz.isActive) {
+    return res.status(404).json({
       success: false,
-      message: 'Failed to fetch quiz history'
+      error: 'Quiz not found'
     });
   }
+  
+  // Check if user can attempt this quiz
+  const canAttempt = quiz.canUserAttempt(req.user!.id);
+  
+  const response: APIResponse = {
+    success: true,
+    data: {
+      quiz: {
+        id: quiz._id,
+        title: quiz.title,
+        description: quiz.description,
+        subject: quiz.subject,
+        topic: quiz.topic,
+        difficulty: quiz.difficulty,
+        timeLimit: quiz.timeLimit,
+        passingScore: quiz.passingScore,
+        questionCount: quiz.questions.length,
+        questions: quiz.questions.map(q => ({
+          id: q.id,
+          type: q.type,
+          question: q.question,
+          options: q.options,
+          difficulty: q.difficulty,
+          points: q.points,
+          timeEstimate: q.timeEstimate,
+          hints: q.hints,
+          concepts: q.concepts
+        }))
+      },
+      userInfo: {
+        canAttempt,
+        remainingAttempts: quiz.maxAttempts - quiz.getUserAttempts(req.user!.id).length,
+        previousAttempts: quiz.getUserAttempts(req.user!.id).map(attempt => ({
+          id: attempt._id,
+          completedAt: attempt.completedAt,
+          score: attempt.score,
+          status: attempt.status
+        }))
+      }
+    },
+    message: 'Quiz retrieved successfully'
+  };
+
+  res.json(response);
 }));
 
 export default router;
