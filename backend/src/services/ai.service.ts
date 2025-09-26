@@ -709,8 +709,14 @@ Generate a comprehensive quiz with exactly ${options.questionCount} questions th
 4. Provides clear explanations for each answer
 5. Focuses on practical application of learned concepts
 
+CRITICAL JSON FORMATTING REQUIREMENTS:
+- Return ONLY valid JSON, no additional text, no markdown formatting
+- Do not use trailing commas anywhere in the JSON
+- All strings must be properly quoted and escaped
+- Arrays must be complete with proper closing brackets
+- Object properties must be properly closed with braces
+
 RESPONSE FORMAT:
-Return a valid JSON object with this exact structure:
 {
   "title": "Quiz title based on conversation topics",
   "description": "Brief description of what this quiz tests",
@@ -727,15 +733,19 @@ Return a valid JSON object with this exact structure:
       ],
       "correctAnswer": "b",
       "explanation": "Detailed explanation of why this answer is correct",
-      "difficulty": "easy",
+      "difficulty": "${options.difficulty}",
       "points": 1,
-      "concepts": ["concept1", "concept2"],
+      "concepts": ["${options.topic}"],
       "timeEstimate": 60
     }
   ]
 }
 
-IMPORTANT: Return ONLY the JSON object, no additional text or formatting.`;
+IMPORTANT: 
+- Return ONLY the JSON object above, nothing else
+- Ensure all ${options.questionCount} questions follow the exact format shown
+- Double-check that all arrays and objects are properly closed
+- No trailing commas after the last element in arrays or objects`;
   }
 
   /**
@@ -773,27 +783,84 @@ Return JSON with analysis structure including overallPerformance, strengths, wea
    */
   private parseContextualQuiz(text: string, options: any): any {
     try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        
-        // Ensure all questions have required fields
-        if (parsed.questions && Array.isArray(parsed.questions)) {
-          parsed.questions = parsed.questions.map((q: any, index: number) => ({
-            ...q,
-            id: q.id || `q${index + 1}`,
-            concepts: q.concepts || [options.topic],
-            timeEstimate: q.timeEstimate || 60
-          }));
-        }
-        
-        return parsed;
+      // First try to extract JSON from the response
+      let jsonText = this.extractJsonFromText(text);
+      
+      if (!jsonText) {
+        throw new Error('No valid JSON found in AI response');
       }
-      throw new Error('No valid JSON found in AI response');
+
+      // Clean the JSON text to handle common AI formatting issues
+      jsonText = this.cleanJsonText(jsonText);
+      
+      const parsed = JSON.parse(jsonText);
+      
+      // Validate the parsed structure
+      if (!parsed.questions || !Array.isArray(parsed.questions)) {
+        throw new Error('Invalid quiz structure: missing questions array');
+      }
+
+      // Ensure all questions have required fields
+      parsed.questions = parsed.questions.map((q: any, index: number) => ({
+        id: q.id || `q${index + 1}`,
+        type: q.type || 'multiple-choice',
+        question: q.question || `Question ${index + 1}`,
+        options: q.options || [],
+        correctAnswer: q.correctAnswer || (q.options && q.options.length > 0 ? q.options[0].id : 'a'),
+        explanation: q.explanation || 'No explanation provided',
+        difficulty: q.difficulty || options.difficulty || 'intermediate',
+        points: q.points || 1,
+        concepts: q.concepts || [options.topic],
+        timeEstimate: q.timeEstimate || 60
+      }));
+
+      // Ensure the quiz has required metadata
+      parsed.title = parsed.title || `${options.subject} Quiz: ${options.topic}`;
+      parsed.description = parsed.description || `A quiz covering ${options.topic} concepts`;
+      
+      return parsed;
     } catch (error) {
       logger.error('Error parsing contextual quiz:', error);
+      logger.error('AI Response text:', text.substring(0, 500) + '...');
       throw new Error('Failed to parse quiz from AI response');
     }
+  }
+
+  /**
+   * Extract JSON from AI response text
+   */
+  private extractJsonFromText(text: string): string | null {
+    // Try multiple patterns to extract JSON
+    const patterns = [
+      /\{[\s\S]*?\}/,  // Basic JSON object
+      /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON in code blocks
+      /```\s*(\{[\s\S]*?\})\s*```/,  // JSON in generic code blocks
+    ];
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match) {
+        return match[1] || match[0];
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Clean JSON text to handle common AI formatting issues
+   */
+  private cleanJsonText(jsonText: string): string {
+    // Remove common issues that cause JSON parsing errors
+    return jsonText
+      // Remove trailing commas before closing brackets/braces
+      .replace(/,(\s*[\}\]])/g, '$1')
+      // Fix incomplete arrays (add closing bracket if missing)
+      .replace(/,\s*$/, '')
+      // Remove any text before the first {
+      .replace(/^[^{]*/, '')
+      // Remove any text after the last }
+      .replace(/[^}]*$/, '');
   }
 
   /**
