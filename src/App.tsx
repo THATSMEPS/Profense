@@ -9,7 +9,7 @@ import { QuizInterface } from './components/quiz/QuizInterface';
 import { QuizHistory } from './components/quiz/QuizHistory';
 import { CourseLibrary } from './components/courses/CourseLibrary';
 import { ProfilePage } from './components/profile/ProfilePage';
-import { User, Course, QuizResult, Quiz } from './types';
+import { User, Course, Quiz } from './types';
 import { authService } from './services/authService';
 import { quizService } from './services/quizService';
 
@@ -162,13 +162,38 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleQuizComplete = async (result: QuizResult) => {
+  const handleQuizComplete = async (answers: any) => {
     try {
-      console.log('Quiz completed with result:', result);
-      // The quiz submission is handled in the QuizInterface component
+      console.log('Quiz completed with answers:', answers);
+      
+      if (!currentQuiz || !currentQuiz.id) {
+        setError('Quiz information missing');
+        return;
+      }
+
+      setPageLoading(true);
+
+      // Calculate total time spent (sum of all question times or default)
+      const timeSpent = answers.reduce((total: number, answer: any) => 
+        total + (answer.timeSpent || 0), 0);
+
+      // Submit the quiz to the backend
+      const result = await quizService.submitGeneratedQuiz(
+        currentQuiz.id,
+        answers,  // Pass answers array directly
+        timeSpent || 60 // Pass timeSpent as separate parameter
+      );
+
+      console.log('Quiz submission result:', result);
+      
+      // Navigate to quiz history to see the results
       setCurrentPage('quiz-history');
+      setCurrentQuiz(null);
     } catch (error) {
-      console.error('Error handling quiz completion:', error);
+      console.error('Error submitting quiz:', error);
+      setError(error instanceof Error ? error.message : 'Failed to submit quiz');
+    } finally {
+      setPageLoading(false);
     }
   };
 

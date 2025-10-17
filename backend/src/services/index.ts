@@ -1,7 +1,12 @@
 import { AIService, getAIService, initializeAI } from './ai.service';
 import { EnhancedAIService, getEnhancedAIService } from './enhanced-ai.service';
 import { mcpClient } from '../mcp/client';
-import { mcpServer } from '../mcp/server';
+import { 
+  mcpServer,
+  manageChatContextTool,
+  moderateContentTool,
+  evaluateQuizTool
+} from '../mcp/server';
 import { logger } from '../utils/logger';
 
 /**
@@ -30,9 +35,13 @@ export const initializeServices = async (): Promise<void> => {
     });
     logger.info('✅ MCP Server started on port 3002.');
 
-    // 3. Pass the server instance to the client and then connect.
+    // 3. Pass the server instance and tool handlers to the client and then connect.
     const client = services.mcpClient();
-    client.setServerInstance(mcpServer);
+    client.setServerInstance(mcpServer, {
+      manageChatContext: manageChatContextTool,
+      moderateContent: moderateContentTool,
+      evaluateQuiz: evaluateQuizTool
+    });
     await client.connect();
     logger.info('✅ MCP Client connected.');
 

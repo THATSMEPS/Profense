@@ -239,13 +239,27 @@ router.post('/:quizId/submit', asyncHandler(async (req: AuthRequest, res) => {
     const evaluationResult = await mcpClient.evaluateQuiz(
       quizId,
       answersObject,
+      req.user!.id,
       contextData
     );
+    
+    // Calculate time metrics
+    const totalTime = timeSpent || 0;
+    const questionCount = quiz.questions.length;
+    const avgTimePerQuestion = questionCount > 0 ? totalTime / questionCount : 0;
+    
+    // Determine time efficiency
+    let timeEfficiency: 'too-fast' | 'optimal' | 'too-slow' = 'optimal';
+    if (avgTimePerQuestion < 10) {
+      timeEfficiency = 'too-fast';
+    } else if (avgTimePerQuestion > 180) {
+      timeEfficiency = 'too-slow';
+    }
     
     // Create quiz attempt with MCP results
     const attempt = {
       userId: req.user!.id,
-      startedAt: new Date(Date.now() - (timeSpent || 0) * 1000),
+      startedAt: new Date(Date.now() - totalTime * 1000),
       completedAt: new Date(),
       answers: evaluationResult.detailedResults.map(result => ({
         questionId: result.questionId,
@@ -266,21 +280,43 @@ router.post('/:quizId/submit', asyncHandler(async (req: AuthRequest, res) => {
         grade: evaluationResult.grade,
         maxScore: evaluationResult.maxScore
       },
-      totalTime: timeSpent || 0,
+      totalTime,
       status: 'completed' as const,
       analysis: {
+        overallPerformance: {
+          score: evaluationResult.percentage,
+          grade: evaluationResult.grade,
+          percentile: 50 // Default for now
+        },
         strengths: evaluationResult.detailedResults
           .filter(r => r.score > 0)
-          .map(r => `Correctly answered: ${r.question.substring(0, 50)}...`),
+          .map(r => ({
+            concept: r.question.substring(0, 100),
+            confidence: 0.8,
+            reasoning: 'Correctly answered this question'
+          })),
         weaknesses: evaluationResult.detailedResults
           .filter(r => r.score === 0)
-          .map(r => `Needs improvement: ${r.question.substring(0, 50)}...`),
-        recommendations: [evaluationResult.overallFeedback],
+          .map(r => ({
+            concept: r.question.substring(0, 100),
+            severity: 'medium' as const,
+            reasoning: `Incorrect answer: ${r.userAnswer}`,
+            suggestions: [r.explanation]
+          })),
+        timeAnalysis: {
+          totalTime,
+          averageTimePerQuestion: avgTimePerQuestion,
+          timeEfficiency
+        },
+        recommendations: [{
+          type: evaluationResult.percentage >= 70 ? 'practice-more' as const : 'study-topic' as const,
+          priority: evaluationResult.percentage >= 70 ? 'low' as const : 'high' as const,
+          description: evaluationResult.overallFeedback
+        }],
         aiInsights: {
-          conceptsLearned: contextData.conceptsCovered || [],
-          nextSteps: [evaluationResult.overallFeedback],
-          difficulty: quiz.difficulty,
-          timeAnalysis: `Completed in ${Math.round((timeSpent || 0) / 60)} minutes`
+          confidenceLevel: evaluationResult.percentage >= 80 ? 'high' as const : 
+                         evaluationResult.percentage >= 60 ? 'medium' as const : 'low' as const,
+          nextSteps: [evaluationResult.overallFeedback]
         }
       },
       feedback: evaluationResult.overallFeedback
@@ -343,28 +379,57 @@ router.post('/:quizId/submit', asyncHandler(async (req: AuthRequest, res) => {
 router.get('/history', asyncHandler(async (req: AuthRequest, res) => {
   try {
     const quizzes = await Quiz.find({ 'attempts.userId': req.user!.id })
-      .sort({ 'attempts.completedAt': -1 })
-      .select('title subject topic difficulty attempts');
+      .sort({ createdAt: -1 })
+      .select('title subject topic difficulty attempts questions');
 
-    const quizHistory = quizzes.flatMap(quiz => 
-      quiz.attempts
-        .filter(attempt => attempt.userId.toString() === req.user!.id.toString())
-        .map(attempt => ({
-          quizId: quiz._id,
-          attemptId: attempt._id,
-          title: quiz.title,
-          subject: quiz.subject,
-          topic: quiz.topic,
-          difficulty: quiz.difficulty,
-          score: attempt.score,
-          completedAt: attempt.completedAt,
-          status: attempt.status
-        }))
-    ).sort((a, b) => {
-      const aTime = a.completedAt?.getTime() || 0;
-      const bTime = b.completedAt?.getTime() || 0;
-      return bTime - aTime;
-    });
+    // Group attempts by quiz and calculate statistics
+    const quizHistory = quizzes.map(quiz => {
+      const userAttempts = quiz.attempts.filter(
+        attempt => attempt.userId.toString() === req.user!.id.toString()
+      );
+
+      if (userAttempts.length === 0) {
+        return null;
+      }
+
+      // Get best score
+      const bestAttempt = userAttempts.reduce((best, current) => {
+        const currentPercentage = current.score?.percentage || 0;
+        const bestPercentage = best.score?.percentage || 0;
+        return currentPercentage > bestPercentage ? current : best;
+      }, userAttempts[0]);
+
+      // Get last attempt
+      const lastAttempt = userAttempts.reduce((latest, current) => {
+        const currentTime = current.completedAt?.getTime() || 0;
+        const latestTime = latest.completedAt?.getTime() || 0;
+        return currentTime > latestTime ? current : latest;
+      }, userAttempts[0]);
+
+      return {
+        quizId: quiz._id.toString(),
+        attemptId: lastAttempt._id?.toString(),
+        title: quiz.title,
+        subject: quiz.subject,
+        topic: quiz.topic,
+        difficulty: quiz.difficulty,
+        totalAttempts: userAttempts.length,
+        bestScore: {
+          percentage: bestAttempt.score?.percentage || 0,
+          grade: bestAttempt.score?.grade || 'F',
+          raw: bestAttempt.score?.raw || 0,
+          maxScore: quiz.questions.length
+        },
+        lastAttempt: {
+          attemptId: lastAttempt._id?.toString() || '',
+          completedAt: lastAttempt.completedAt || new Date(),
+          score: lastAttempt.score?.percentage || 0,
+          answers: lastAttempt.answers?.length || 0,
+          status: lastAttempt.status
+        },
+        questionCount: quiz.questions.length
+      };
+    }).filter(item => item !== null);
     
     const response: APIResponse = {
       success: true,
@@ -382,4 +447,89 @@ router.get('/history', asyncHandler(async (req: AuthRequest, res) => {
   }
 }));
 
+/**
+ * @route   GET /api/quiz/:quizId/attempt/:attemptId
+ * @desc    Get detailed results for a specific quiz attempt
+ * @access  Private
+ */
+router.get('/:quizId/attempt/:attemptId', asyncHandler(async (req: AuthRequest, res) => {
+  try {
+    const { quizId, attemptId } = req.params;
+    
+    const quiz = await Quiz.findById(quizId);
+    
+    if (!quiz) {
+      return res.status(404).json({
+        success: false,
+        error: 'Quiz not found'
+      });
+    }
+    
+    // Find the specific attempt
+    const attempt = quiz.attempts.find(
+      att => att._id?.toString() === attemptId && 
+             att.userId.toString() === req.user!.id.toString()
+    );
+    
+    if (!attempt) {
+      return res.status(404).json({
+        success: false,
+        error: 'Attempt not found'
+      });
+    }
+    
+    // Build detailed results with question information
+    const detailedResults = quiz.questions.map((question, index) => {
+      const answer = attempt.answers.find(ans => ans.questionId === question.id);
+      
+      return {
+        questionId: question.id,
+        question: question.question,
+        type: question.type,
+        userAnswer: answer?.userAnswer || null,
+        correctAnswer: question.correctAnswer,
+        isCorrect: answer?.isCorrect || false,
+        explanation: question.explanation,
+        points: question.points,
+        earnedPoints: answer?.isCorrect ? question.points : 0,
+        timeSpent: answer?.timeSpent || 0,
+        options: question.options || []
+      };
+    });
+    
+    const response: APIResponse = {
+      success: true,
+      data: {
+        quiz: {
+          id: quiz._id,
+          title: quiz.title,
+          subject: quiz.subject,
+          topic: quiz.topic,
+          difficulty: quiz.difficulty
+        },
+        attempt: {
+          id: attempt._id,
+          completedAt: attempt.completedAt,
+          score: attempt.score,
+          totalTime: attempt.totalTime,
+          status: attempt.status
+        },
+        results: detailedResults,
+        analysis: attempt.analysis,
+        feedback: attempt.feedback
+      },
+      message: 'Attempt details retrieved successfully'
+    };
+    
+    res.json(response);
+  } catch (error) {
+    logger.error('Error fetching attempt details:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch attempt details'
+    });
+  }
+}));
+
 export default router;
+

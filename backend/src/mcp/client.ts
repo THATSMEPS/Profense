@@ -40,11 +40,21 @@ export class MCPClientService {
   private transport: StdioClientTransport | null = null;
   private isConnected: boolean = false;
   private mcpServerInstance: any = null;
+  private toolHandlers: Map<string, any> = new Map();
 
   constructor(private options: MCPClientOptions = {}) {}
 
-  public setServerInstance(serverInstance: any) {
+  public setServerInstance(serverInstance: any, tools?: { [key: string]: any }) {
     this.mcpServerInstance = serverInstance;
+    
+    // Store tool handlers for direct access
+    if (tools) {
+      Object.entries(tools).forEach(([name, tool]) => {
+        if (tool && tool.handler) {
+          this.toolHandlers.set(tool.name, tool.handler);
+        }
+      });
+    }
   }
 
   async connect(): Promise<void> {
@@ -81,7 +91,13 @@ export class MCPClientService {
     }
 
     try {
-      const result = await this.mcpServerInstance.run('manage_chat_context', {
+      // Get the manage_chat_context tool handler
+      const handler = this.toolHandlers.get('manage_chat_context');
+      if (!handler) {
+        throw new Error('manage_chat_context tool handler not found');
+      }
+
+      const result = await handler({
         sessionId,
         summary,
         keyPoints,
@@ -105,7 +121,13 @@ export class MCPClientService {
     }
 
     try {
-      const result = await this.mcpServerInstance.run('moderate_content', {
+      // Get the moderate_content tool handler
+      const handler = this.toolHandlers.get('moderate_content');
+      if (!handler) {
+        throw new Error('moderate_content tool handler not found');
+      }
+
+      const result = await handler({
         query,
         allowedSubjects,
         strictMode
@@ -121,9 +143,12 @@ export class MCPClientService {
   async evaluateQuiz(
     quizId: string,
     answers: Record<string, any>,
+    userId: string,
     contextData?: {
       chatHistory?: any[];
       conceptsCovered?: string[];
+      subject?: string;
+      difficulty?: string;
     }
   ): Promise<QuizEvaluationResult> {
     if (!this.isConnected || !this.mcpServerInstance) {
@@ -131,13 +156,67 @@ export class MCPClientService {
     }
 
     try {
-      const result = await this.mcpServerInstance.evaluateQuizDirect({
+      // The MCP server expects an array of answers with questionId and answer
+      // Convert the answers object to the expected format
+      const answersArray = Object.entries(answers).map(([questionId, answer]) => ({
+        questionId,
+        answer: typeof answer === 'object' ? JSON.stringify(answer) : String(answer)
+      }));
+
+      // Get the evaluate_quiz tool handler
+      const evaluateQuizHandler = this.toolHandlers.get('evaluate_quiz');
+      if (!evaluateQuizHandler) {
+        throw new Error('evaluate_quiz tool handler not found');
+      }
+
+      // Call the tool handler directly
+      const result = await evaluateQuizHandler({
         quizId,
-        answers,
-        contextData
+        answers: answersArray,
+        userId
       });
 
-      return result as QuizEvaluationResult;
+      logger.info('MCP evaluation result:', { result });
+
+      // Transform the MCP result to match our QuizEvaluationResult interface
+      if (result.success) {
+        const detailedResults = result.feedback.map((item: any, index: number) => ({
+          questionId: answersArray[index]?.questionId || String(index),
+          question: item.question,
+          userAnswer: item.userAnswer,
+          correctAnswer: item.correctAnswer,
+          isCorrect: item.isCorrect,
+          score: item.isCorrect ? 1 : 0,
+          feedback: item.isCorrect ? 'Correct!' : 'Incorrect',
+          explanation: item.isCorrect 
+            ? `Great job! ${item.correctAnswer} is correct.` 
+            : `The correct answer is: ${item.correctAnswer}`
+        }));
+
+        const totalScore = detailedResults.filter((r: any) => r.isCorrect).length;
+        const maxScore = detailedResults.length;
+        const percentage = maxScore > 0 ? (totalScore / maxScore) * 100 : 0;
+        
+        // Calculate grade
+        let grade = 'F';
+        if (percentage >= 90) grade = 'A';
+        else if (percentage >= 80) grade = 'B';
+        else if (percentage >= 70) grade = 'C';
+        else if (percentage >= 60) grade = 'D';
+
+        return {
+          quizId,
+          totalScore,
+          maxScore,
+          percentage,
+          grade,
+          detailedResults,
+          overallFeedback: result.detailedFeedback || 'Quiz completed successfully.',
+          completedAt: new Date()
+        };
+      }
+
+      throw new Error(result.message || 'Quiz evaluation failed');
     } catch (error) {
       logger.error('Error evaluating quiz:', error);
       throw error;

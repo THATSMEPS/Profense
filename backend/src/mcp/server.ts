@@ -121,16 +121,32 @@ const evaluateQuizTool = {
             const feedbackItems: any[] = [];
 
             for (const userAnswer of answers) {
-                const question = quiz.questions.find((q: any) => q._id.toString() === userAnswer.questionId);
-                if (question && question.correctAnswer) {
-                    const isCorrect = question.correctAnswer.trim().toLowerCase() === userAnswer.answer.trim().toLowerCase();
+                // Questions use 'id' field, not '_id'
+                const question = quiz.questions.find((q: any) => q.id === userAnswer.questionId);
+                if (question) {
+                    let isCorrect = false;
+                    let correctAnswer = '';
+
+                    // Handle different question types
+                    if (question.type === 'multiple-choice') {
+                        // For multiple choice, find the correct option
+                        const correctOption = question.options?.find((opt: any) => opt.isCorrect);
+                        correctAnswer = correctOption?.text || correctOption?.id || '';
+                        isCorrect = userAnswer.answer === correctOption?.id || userAnswer.answer === correctOption?.text;
+                    } else {
+                        // For other types (numerical, text, true-false), use correctAnswer field
+                        correctAnswer = question.correctAnswer || '';
+                        isCorrect = correctAnswer.trim().toLowerCase() === userAnswer.answer.trim().toLowerCase();
+                    }
+
                     if (isCorrect) {
                         score++;
                     }
+                    
                     feedbackItems.push({
                         question: question.question,
                         userAnswer: userAnswer.answer,
-                        correctAnswer: question.correctAnswer,
+                        correctAnswer: correctAnswer,
                         isCorrect,
                     });
                 }
@@ -162,5 +178,10 @@ mcpServer.addTool(manageChatContextTool as any);
 mcpServer.addTool(moderateContentTool as any);
 mcpServer.addTool(evaluateQuizTool as any);
 
-// Export the configured server instance for use in the main application.
-export { mcpServer };
+// Export the configured server instance and tool handlers for use in the main application.
+export { 
+    mcpServer,
+    manageChatContextTool,
+    moderateContentTool,
+    evaluateQuizTool
+};

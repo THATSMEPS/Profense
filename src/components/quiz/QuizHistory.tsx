@@ -4,6 +4,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { quizService } from '../../services/quizService';
 import { QuizHistoryItem } from '../../types';
+import { QuizResultsDetail } from './QuizResultsDetail';
 
 interface QuizHistoryProps {
   userId?: string;
@@ -21,6 +22,8 @@ export const QuizHistory: React.FC<QuizHistoryProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'date' | 'score' | 'subject'>('date');
   const [filterBy, setFilterBy] = useState<string>('all');
+  const [selectedAttempt, setSelectedAttempt] = useState<any>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
   useEffect(() => {
     loadQuizHistory();
@@ -30,13 +33,26 @@ export const QuizHistory: React.FC<QuizHistoryProps> = ({
     try {
       setLoading(true);
       setError(null);
-                  const history = await quizService.getQuizHistory();
+      const history = await quizService.getQuizHistory();
       setQuizHistory(history);
     } catch (err) {
       setError('Failed to load quiz history');
       console.error('Error loading quiz history:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleViewDetails = async (quizId: string, attemptId: string) => {
+    try {
+      setLoadingDetails(true);
+      const details = await quizService.getAttemptDetails(quizId, attemptId);
+      setSelectedAttempt(details);
+    } catch (err) {
+      console.error('Error loading attempt details:', err);
+      setError('Failed to load quiz details');
+    } finally {
+      setLoadingDetails(false);
     }
   };
 
@@ -129,6 +145,16 @@ export const QuizHistory: React.FC<QuizHistoryProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Results Detail Modal */}
+      <AnimatePresence>
+        {selectedAttempt && (
+          <QuizResultsDetail
+            quizData={selectedAttempt}
+            onClose={() => setSelectedAttempt(null)}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Header and Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -284,12 +310,10 @@ export const QuizHistory: React.FC<QuizHistoryProps> = ({
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={() => {
-                            // TODO: Implement view detailed results
-                            console.log('View details for quiz:', item.quizId);
-                          }}
+                          onClick={() => handleViewDetails(item.quizId, item.lastAttempt.attemptId)}
+                          disabled={loadingDetails}
                         >
-                          View Details
+                          {loadingDetails ? 'Loading...' : 'View Details'}
                         </Button>
                       </div>
                     </div>

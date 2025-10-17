@@ -209,11 +209,15 @@ class QuizService {
 
   async submitGeneratedQuiz(
     quizId: string,
-    answers: Record<string, any>
+    answers: any[],
+    timeSpent?: number
   ): Promise<any> {
     try {
       // Updated endpoint to /quiz/:id/submit
-      const response: ApiResponse<any> = await apiClient.post(`/quiz/${quizId}/submit`, { answers });
+      const response: ApiResponse<any> = await apiClient.post(`/quiz/${quizId}/submit`, { 
+        answers,
+        timeSpent: timeSpent || 0
+      });
       if (response.success && response.data) {
         return response.data;
       }
@@ -265,6 +269,21 @@ class QuizService {
       return [];
     }
   }
+
+  // Get detailed results for a specific quiz attempt
+  async getAttemptDetails(quizId: string, attemptId: string): Promise<any> {
+    try {
+      const response: ApiResponse<any> = await apiClient.get(`/quiz/${quizId}/attempt/${attemptId}`);
+      if (response.success && response.data) {
+        return response.data;
+      }
+      throw new Error(response.error || 'Failed to fetch attempt details');
+    } catch (error) {
+      console.error('Error fetching attempt details:', error);
+      throw error;
+    }
+  }
 }
 
 export const quizService = new QuizService();
+
