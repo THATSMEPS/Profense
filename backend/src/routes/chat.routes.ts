@@ -2,9 +2,59 @@ import express from 'express';
 import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest, APIResponse } from '../types';
 import { getAIService } from '../services/ai.service';
+import { getEnhancedAIService } from '../services/enhanced-ai.service';
+import { mcpClient } from '../mcp/client';
 import { ChatSession } from '../models/ChatSession';
+import { logger } from '../utils/logger';
 
 const router = express.Router();
+
+// Content moderation function
+async function performContentModeration(message: string) {
+  // Only block explicitly inappropriate content
+  const explicitlyInappropriatePatterns = [
+    /\b(explicit|pornographic|sexual|nude|xxx)\b/i,
+    /\b(violence|kill|murder|harm|suicide|self[-\s]harm)\b/i,
+    /\b(illegal|drugs|cocaine|heroin|marijuana sale|weapon)\b/i,
+    /\b(hate speech|racist|discrimination|offensive slur)\b/i
+  ];
+  
+  // Educational content patterns - broader to catch legitimate queries
+  const educationalPatterns = [
+    /\b(explain|tell|what|how|why|learn|study|teach|understand|help|question|homework|assignment|course|lesson|tutorial)\b/i,
+    /\b(math|science|physics|chemistry|biology|history|literature|programming|computer|engineering|medicine|law|business)\b/i,
+    /\b(formula|equation|theory|concept|principle|definition|example|problem|solution|analysis)\b/i,
+    /\b(optics|ray|light|calculus|algebra|geometry|trigonometry|statistics|probability)\b/i,
+    /\b(atom|molecule|cell|evolution|gravity|energy|force|motion|electricity|magnetism)\b/i
+  ];
+  
+  const questionPatterns = [
+    /\?/,
+    /\b(give me|show me|can you|could you|would you|please)\b/i
+  ];
+  
+  const isExplicitlyInappropriate = explicitlyInappropriatePatterns.some(pattern => pattern.test(message));
+  const isEducational = educationalPatterns.some(pattern => pattern.test(message));
+  const isQuestion = questionPatterns.some(pattern => pattern.test(message));
+  
+  // Only block explicitly inappropriate content
+  if (isExplicitlyInappropriate) {
+    return {
+      approved: false,
+      reasoning: "I'm designed to help with educational content and cannot assist with inappropriate topics.",
+      suggestedQuery: "How can I help you learn something new today?",
+      relevantSubjects: ['Mathematics', 'Science', 'Programming', 'Literature', 'Physics'],
+      confidenceScore: 0.9
+    };
+  }
+  
+  // Allow educational content, questions, and most other content
+  return {
+    approved: true,
+    reasoning: "Content is appropriate for educational discussion.",
+    confidenceScore: 0.8
+  };
+}
 
 /**
  * @route   POST /api/chat/session
@@ -169,7 +219,7 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
       });
     }
     
-    // Add user message to session
+        // Add user message to session
     const userMessage = {
       content: message,
       isUser: true,
@@ -185,63 +235,125 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
       }
     };
     
-    chatSession.messages.push(userMessage);
+    // Content moderation check
+    const moderationResult = await performContentModeration(message);
+    let aiResponse;
     
-    const aiService = getAIService();
-    
-    // Handle simple greetings differently
-    if (isGreeting) {
-      const greetingResponses = [
-        "Hello! I'm here to help you learn. What would you like to explore today?",
-        "Hi there! Ready to dive into some learning? What topic interests you?",
-        "Hey! Great to see you here. What would you like to learn about?",
-        "Hello! I'm your AI tutor. How can I help you learn something new today?",
-        "Hi! I'm excited to help you learn. What subject would you like to explore?"
-      ];
-      
-      const randomResponse = greetingResponses[Math.floor(Math.random() * greetingResponses.length)];
-      
-      const aiMessage = {
-        content: randomResponse,
+    if (!moderationResult.approved) {
+      // If content is not appropriate, provide moderated response
+      aiResponse = {
+        content: `I notice your message might not be directly related to learning. ${moderationResult.reasoning} Let me help you with educational content instead.`,
         isUser: false,
         messageType: 'text' as const,
         timestamp: new Date(),
-        aiModel: 'gemini-2.5-flash',
-        processingTime: 100,
+        aiModel: 'content-moderation',
         metadata: {
           confidence: 1.0,
-          sentiment: 'positive' as const,
+          sentiment: 'neutral' as const,
           conceptsIdentified: [],
           suggestedActions: [],
-          nextTopics: [],
-          teachingMode: difficulty as any
+          nextTopics: moderationResult.relevantSubjects || [],
+          teachingMode: difficulty as any,
+          moderation: moderationResult
         }
       };
       
-      chatSession.messages.push(aiMessage);
+      chatSession.messages.push(aiResponse);
       await chatSession.save();
 
       const response: APIResponse = {
         success: true,
         data: {
-          message: aiMessage,
+          message: aiResponse,
           sessionId: chatSession._id,
           session: {
             id: chatSession._id,
-            title: chatSession.title,
+            title: chatSession.title || chatSession.subject,
             subject: chatSession.subject,
             messageCount: chatSession.messageCount,
             lastActivity: chatSession.lastActivity
-          }
+          },
+          moderation: moderationResult
         },
-        message: 'Greeting response sent successfully'
+        message: 'Moderated response sent successfully'
       };
 
       return res.json(response);
-    }
+    } else {
+      chatSession.messages.push(userMessage);
+      
+      const aiService = getEnhancedAIService();
     
-    // Get conversation context for AI
-    const conversationContext = chatSession.getContextSummary();
+      // Ensure MCP client is connected
+      if (!mcpClient.isClientConnected()) {
+        await mcpClient.connect();
+      }
+      
+      // Handle simple greetings differently
+      if (isGreeting) {
+        const greetingResponses = [
+          "Hello! I'm here to help you learn. What would you like to explore today?",
+          "Hi there! Ready to dive into some learning? What topic interests you?",
+          "Hey! Great to see you here. What would you like to learn about?",
+          "Hello! I'm your AI tutor. How can I help you learn something new today?",
+          "Hi! I'm excited to help you learn. What subject would you like to explore?"
+        ];
+        
+        const randomResponse = greetingResponses[Math.floor(Math.random() * greetingResponses.length)];
+        
+        aiResponse = {
+          content: randomResponse,
+          isUser: false,
+          messageType: 'text' as const,
+          timestamp: new Date(),
+          aiModel: 'gemini-2.5-flash',
+          processingTime: 100,
+          metadata: {
+            confidence: 1.0,
+            sentiment: 'positive' as const,
+            conceptsIdentified: [],
+            suggestedActions: [],
+            nextTopics: [],
+            teachingMode: difficulty as any
+          }
+                };
+        
+        chatSession.messages.push(aiResponse);
+        await chatSession.save();
+
+        const response: APIResponse = {
+          success: true,
+          data: {
+            message: aiResponse,
+            sessionId: chatSession._id,
+            session: {
+              id: chatSession._id,
+              title: chatSession.title,
+              subject: chatSession.subject,
+              messageCount: chatSession.messageCount,
+              lastActivity: chatSession.lastActivity
+            },
+            moderation: moderationResult.approved ? undefined : moderationResult
+          },
+          message: 'Greeting response sent successfully'
+        };
+
+        return res.json(response);
+      } else {
+        // Get conversation context for AI
+        const conversationContext = chatSession.getContextSummary();
+    
+    // Update chat context using MCP - temporarily disabled until MCP implementation is fixed
+    // try {
+    //   await mcpClient.manageChatContext(
+    //     chatSession._id.toString(),
+    //     undefined, // Let MCP generate summary
+    //     undefined, // Let MCP extract key points
+    //     chatSession.context.learningObjectives
+    //   );
+    // } catch (error) {
+    //   logger.warn('Failed to update chat context with MCP:', error);
+    // }
     
     // Create enhanced context for AI response
     const context = {
@@ -263,6 +375,11 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
     
     // Generate AI response
     const aiResponse = await aiService.generateTeachingResponse(message, context);
+
+    if (!aiResponse.content || aiResponse.content.trim() === '') {
+      logger.warn('AI returned an empty response, sending a fallback message.');
+      aiResponse.content = "I'm not sure how to respond to that. Could you please rephrase your question?";
+    }
     
     const processingTime = Date.now() - startTime;
     
@@ -334,6 +451,8 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
     };
 
     res.json(response);
+      }
+    }
   } catch (error) {
     console.error('Error processing message:', error);
     const response: APIResponse = {

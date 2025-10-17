@@ -53,6 +53,13 @@ const questionSchema = new Schema<IQuestion>({
   }
 }, { _id: false });
 
+questionSchema.set('toJSON', {
+  transform: (doc, ret: any) => {
+    delete ret._id;
+    return ret;
+  }
+});
+
 const quizAnalysisSchema = new Schema<IQuizAnalysis>({
   overallPerformance: {
     score: {
@@ -473,6 +480,36 @@ quizSchema.methods.canUserAttempt = function(userId: string) {
   const completedAttempts = userAttempts.filter(attempt => attempt.status === 'completed');
   
   return completedAttempts.length < this.maxAttempts;
+};
+
+// Method to check if an answer is correct for a specific question
+quizSchema.methods.checkAnswer = function(questionId: string, userAnswer: string) {
+  const question = this.questions.find((q: any) => q.id === questionId);
+  
+  if (!question) {
+    return false;
+  }
+  
+  switch (question.type) {
+    case 'multiple-choice':
+      const correctOption = question.options?.find((opt: any) => opt.isCorrect);
+      return correctOption ? userAnswer === correctOption.id : false;
+      
+    case 'numerical':
+      // For numerical questions, allow small tolerance
+      const userNum = parseFloat(userAnswer);
+      const correctNum = parseFloat(question.correctAnswer || '0');
+      if (isNaN(userNum) || isNaN(correctNum)) return false;
+      return Math.abs(userNum - correctNum) < 0.01;
+      
+    case 'true-false':
+      return userAnswer.toLowerCase() === (question.correctAnswer || '').toLowerCase();
+      
+    case 'text':
+    default:
+      // For text questions, exact match (case-insensitive)
+      return userAnswer.toLowerCase().trim() === (question.correctAnswer || '').toLowerCase().trim();
+  }
 };
 
 export const Quiz = mongoose.model<IQuiz>('Quiz', quizSchema);

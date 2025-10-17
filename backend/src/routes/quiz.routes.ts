@@ -1,7 +1,9 @@
 import express from 'express';
 import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest, APIResponse, IChatSession } from '../types';
-import { getAIService } from '../services/ai.service';
+// import { getAIService } from '../services/ai.service';
+import { getEnhancedAIService } from '../services/enhanced-ai.service';
+import { mcpClient } from '../mcp/client';
 import { logger } from '../utils/logger';
 import { Quiz } from '../models/Quiz';
 import { ChatSession } from '../models/ChatSession';
@@ -29,9 +31,12 @@ router.post('/generate', asyncHandler(async (req: AuthRequest, res) => {
     subject, 
     topic, 
     difficulty = 'intermediate', 
-    questionCount = 10,
+    questionCount: requestedQuestionCount = 5,
     questionTypes = ['multiple-choice', 'numerical', 'text']
   } = req.body;
+  
+  // Cap question count to prevent AI response truncation
+  const questionCount = Math.min(requestedQuestionCount, 6);
   
   if (!sessionId && !subject) {
     return res.status(400).json({
@@ -61,7 +66,13 @@ router.post('/generate', asyncHandler(async (req: AuthRequest, res) => {
       }
     }
     
-    const aiService = getAIService();
+    // Use enhanced AI service for quiz generation
+    const aiService = getEnhancedAIService();
+    
+    // Ensure MCP client is connected for context management
+    if (!mcpClient.isClientConnected()) {
+      await mcpClient.connect();
+    }
     
     // Generate quiz using AI
     const quizData = await aiService.generateQuiz({
@@ -190,72 +201,101 @@ router.post('/:quizId/submit', asyncHandler(async (req: AuthRequest, res) => {
       });
     }
     
+    // Ensure MCP client is connected
+    if (!mcpClient.isClientConnected()) {
+      await mcpClient.connect();
+    }
+    
     const startTime = Date.now();
     
-    // Process answers and calculate score
-    const processedAnswers = answers.map((answer: any, index: number) => {
+    // Prepare answers object for MCP evaluation
+    const answersObject: Record<string, any> = {};
+    answers.forEach((answer: any, index: number) => {
       const question = quiz.questions[index];
-      let isCorrect = false;
-      
-      if (question.type === 'multiple-choice') {
-        const correctOption = question.options?.find(opt => opt.isCorrect);
-        isCorrect = !!(correctOption && answer.userAnswer === correctOption.id);
-      } else if (question.type === 'numerical') {
-        const userNum = parseFloat(answer.userAnswer);
-        const correctNum = parseFloat(question.correctAnswer || '0');
-        isCorrect = Math.abs(userNum - correctNum) < 0.01;
-      } else if (question.type === 'text') {
-        isCorrect = (answer.userAnswer || '').toLowerCase().trim() === 
-                   (question.correctAnswer || '').toLowerCase().trim();
-      } else if (question.type === 'true-false') {
-        isCorrect = (answer.userAnswer || '').toLowerCase() === 
-                   (question.correctAnswer || '').toLowerCase();
+      if (question) {
+        answersObject[question.id] = answer.userAnswer;
       }
-      
-      return {
-        questionId: question.id,
-        userAnswer: answer.userAnswer,
-        isCorrect,
-        timeSpent: answer.timeSpent || 0,
-        confidence: answer.confidence || 3
-      };
     });
     
-    const score = quiz.calculateScore(processedAnswers);
+    // Get context data for enhanced evaluation
+    let contextData: any = {};
+    if (quiz.generationContext?.chatSessionId) {
+      try {
+        const chatSession = await ChatSession.findById(quiz.generationContext.chatSessionId);
+        if (chatSession) {
+          contextData = {
+            chatHistory: chatSession.messages.slice(-10), // Last 10 messages
+            conceptsCovered: chatSession.conceptsCovered.map(c => c.concept),
+            subject: chatSession.subject,
+            difficulty: chatSession.context.difficulty
+          };
+        }
+      } catch (error) {
+        logger.warn('Failed to get chat context for quiz evaluation:', error);
+      }
+    }
     
-    // Generate AI analysis
-    const aiService = getAIService();
-    const analysis = await aiService.generateQuizAnalysis({
-      quiz,
-      answers: processedAnswers,
-      score,
-      timeSpent: timeSpent || 0,
-      userId: req.user!.id
-    });
+    // Use MCP for quiz evaluation
+    const evaluationResult = await mcpClient.evaluateQuiz(
+      quizId,
+      answersObject,
+      contextData
+    );
     
-    // Create quiz attempt
+    // Create quiz attempt with MCP results
     const attempt = {
       userId: req.user!.id,
       startedAt: new Date(Date.now() - (timeSpent || 0) * 1000),
       completedAt: new Date(),
-      answers: processedAnswers,
-      score,
+      answers: evaluationResult.detailedResults.map(result => ({
+        questionId: result.questionId,
+        userAnswer: result.userAnswer,
+        isCorrect: result.score > 0,
+        timeSpent: answers.find((a: any, i: number) => 
+          quiz.questions[i]?.id === result.questionId
+        )?.timeSpent || 0,
+        confidence: answers.find((a: any, i: number) => 
+          quiz.questions[i]?.id === result.questionId
+        )?.confidence || 3,
+        feedback: result.feedback,
+        explanation: result.explanation
+      })),
+      score: {
+        raw: evaluationResult.totalScore,
+        percentage: evaluationResult.percentage,
+        grade: evaluationResult.grade,
+        maxScore: evaluationResult.maxScore
+      },
       totalTime: timeSpent || 0,
       status: 'completed' as const,
-      analysis,
-      feedback: analysis.aiInsights.nextSteps.join(' ')
+      analysis: {
+        strengths: evaluationResult.detailedResults
+          .filter(r => r.score > 0)
+          .map(r => `Correctly answered: ${r.question.substring(0, 50)}...`),
+        weaknesses: evaluationResult.detailedResults
+          .filter(r => r.score === 0)
+          .map(r => `Needs improvement: ${r.question.substring(0, 50)}...`),
+        recommendations: [evaluationResult.overallFeedback],
+        aiInsights: {
+          conceptsLearned: contextData.conceptsCovered || [],
+          nextSteps: [evaluationResult.overallFeedback],
+          difficulty: quiz.difficulty,
+          timeAnalysis: `Completed in ${Math.round((timeSpent || 0) / 60)} minutes`
+        }
+      },
+      feedback: evaluationResult.overallFeedback
     };
     
-    quiz.attempts.push(attempt as any); // Mongoose will cast this
+    quiz.attempts.push(attempt as any);
     await quiz.save();
     
     const newAttempt = quiz.attempts[quiz.attempts.length - 1];
     const processingTime = Date.now() - startTime;
     
-    logger.info(`Quiz submitted by user ${req.user!.id}:`, {
+    logger.info(`Quiz evaluated with MCP by user ${req.user!.id}:`, {
       quizId,
-      score: score.percentage,
-      grade: score.grade,
+      score: evaluationResult.percentage,
+      grade: evaluationResult.grade,
       timeSpent,
       processingTime
     });
@@ -264,9 +304,15 @@ router.post('/:quizId/submit', asyncHandler(async (req: AuthRequest, res) => {
       success: true,
       data: {
         attemptId: newAttempt._id,
-        score,
-        analysis,
-        feedback: attempt.feedback,
+        score: {
+          raw: evaluationResult.totalScore,
+          percentage: evaluationResult.percentage,
+          grade: evaluationResult.grade,
+          maxScore: evaluationResult.maxScore
+        },
+        analysis: attempt.analysis,
+        feedback: evaluationResult.overallFeedback,
+        detailedResults: evaluationResult.detailedResults,
         quiz: {
           id: quiz._id,
           title: quiz.title,
@@ -274,7 +320,7 @@ router.post('/:quizId/submit', asyncHandler(async (req: AuthRequest, res) => {
           difficulty: quiz.difficulty
         }
       },
-      message: 'Quiz submitted and analyzed successfully'
+      message: 'Quiz submitted and evaluated with enhanced AI analysis'
     };
     
     res.json(response);

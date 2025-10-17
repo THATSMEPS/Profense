@@ -58,12 +58,22 @@ const chatMessageSchema = new Schema<IChatMessage>({
   }
 }, { _id: true });
 
+chatMessageSchema.methods.getContextSummary = function() {
+  const recentMessages = this.messages.slice(-10); // Last 10 messages
+  const conceptsCovered = [...new Set(this.messages.flatMap(m => m.metadata?.conceptsIdentified || []))];
+  return { recentMessages, conceptsCovered };
+};
+
 const chatSessionSchema = new Schema<IChatSession>({
   userId: {
     type: Schema.Types.ObjectId,
     ref: 'User',
     required: true,
     index: true
+  },
+  summary: {
+    type: String,
+    trim: true,
   },
   title: {
     type: String,
@@ -171,7 +181,7 @@ chatSessionSchema.index({ createdAt: -1 });
 chatSessionSchema.index({ 'context.sessionType': 1 });
 
 // Update lastActivity when messages are added
-chatSessionSchema.pre('save', function(next) {
+chatSessionSchema.pre<IChatSession>('save', function(next) {
   if (this.isModified('messages')) {
     this.lastActivity = new Date();
     this.messageCount = this.messages.length;
@@ -188,7 +198,7 @@ chatSessionSchema.pre('save', function(next) {
 });
 
 // Virtual to get session duration
-chatSessionSchema.virtual('duration').get(function() {
+chatSessionSchema.virtual('duration').get(function(this: IChatSession) {
   if (this.endTime) {
     return Math.round((this.endTime.getTime() - this.startTime.getTime()) / (1000 * 60)); // in minutes
   }

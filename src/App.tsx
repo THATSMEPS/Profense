@@ -125,10 +125,22 @@ const AppContent: React.FC = () => {
   const handleStartQuiz = async (subject?: string, difficulty?: string, topic?: string, chatContext?: string) => {
     try {
       setPageLoading(true);
+      
+      // Check if user is authenticated
+      if (!user) {
+        setError('Please log in to start a quiz');
+        setCurrentPage('auth');
+        return;
+      }
+      
+      console.log('Starting quiz with user:', user);
+      console.log('Quiz parameters:', { subject, difficulty, topic, chatContext });
+      
       let quiz: Quiz;
       
       if (subject && difficulty) {
-        quiz = await quizService.generateQuiz(subject, difficulty, 10, topic, chatContext);
+        const validDifficulty = difficulty as 'beginner' | 'intermediate' | 'advanced';
+        quiz = await quizService.generateQuiz(subject, validDifficulty, 10, topic, chatContext);
       } else {
         // Get recommended quiz or show quiz selection
         const quizzes = await quizService.getRecommendedQuizzes();
@@ -143,6 +155,7 @@ const AppContent: React.FC = () => {
       setCurrentQuiz(quiz);
       setCurrentPage('quiz');
     } catch (error) {
+      console.error('Quiz generation error:', error);
       setError(error instanceof Error ? error.message : 'Failed to load quiz');
     } finally {
       setPageLoading(false);
@@ -163,7 +176,8 @@ const AppContent: React.FC = () => {
     try {
       setPageLoading(true);
       // For now, generate a new quiz of the same type
-      // In production, you'd load the exact same quiz
+      // In production, you'd load the exact same quiz by ID
+      console.log('Retaking quiz with ID:', quizId);
       const quiz = await quizService.generateQuiz('Mathematics', 'intermediate');
       setCurrentQuiz(quiz);
       setCurrentPage('quiz');
@@ -226,10 +240,14 @@ const AppContent: React.FC = () => {
         );
       case 'chat':
         return <ChatInterface onGenerateQuiz={handleStartQuiz} />;
-  case 'quiz':
+      case 'quiz':
         return currentQuiz ? (
           <QuizInterface
-            quiz={currentQuiz}
+            quiz={{
+              ...currentQuiz,
+              description: currentQuiz.description || 'Test your knowledge with this quiz',
+              timeLimit: currentQuiz.timeLimit || 600 // Default to 10 minutes
+            }}
             onComplete={handleQuizComplete}
             onExit={() => setCurrentPage('quiz-history')}
           />

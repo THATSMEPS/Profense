@@ -43,7 +43,8 @@ class ApiClient {
       'Content-Type': 'application/json',
     };
 
-    const token = this.getToken();
+    // Always grab fresh token from localStorage
+    const token = localStorage.getItem('token');
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }

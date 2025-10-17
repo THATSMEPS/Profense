@@ -6,10 +6,16 @@ import { quizService } from '../../services/quizService';
 import { QuizHistoryItem } from '../../types';
 
 interface QuizHistoryProps {
-  userId: string;
+  userId?: string;
+  onStartQuiz?: (subject?: string, difficulty?: string, topic?: string, chatContext?: string) => Promise<void>;
+  onRetakeQuiz?: (quizId: string) => Promise<void>;
 }
 
-export const QuizHistory: React.FC<QuizHistoryProps> = ({ userId }) => {
+export const QuizHistory: React.FC<QuizHistoryProps> = ({ 
+  userId, 
+  onStartQuiz, 
+  onRetakeQuiz 
+}) => {
   const [quizHistory, setQuizHistory] = useState<QuizHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +30,7 @@ export const QuizHistory: React.FC<QuizHistoryProps> = ({ userId }) => {
     try {
       setLoading(true);
       setError(null);
-      const history = await quizService.getQuizHistory();
+                  const history = await quizService.getQuizHistory();
       setQuizHistory(history);
     } catch (err) {
       setError('Failed to load quiz history');
@@ -108,6 +114,14 @@ export const QuizHistory: React.FC<QuizHistoryProps> = ({ userId }) => {
           </div>
           <h3 className="text-lg font-semibold text-gray-700 mb-2">No Quiz History</h3>
           <p className="text-gray-500 mb-4">You haven't taken any quizzes yet. Start learning to build your history!</p>
+          {onStartQuiz && (
+            <Button 
+              onClick={() => onStartQuiz('Mathematics', 'intermediate')}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Start Your First Quiz
+            </Button>
+          )}
         </div>
       </Card>
     );
@@ -156,7 +170,7 @@ export const QuizHistory: React.FC<QuizHistoryProps> = ({ userId }) => {
         </Card>
         <Card className="p-4">
           <div className="text-2xl font-bold text-green-600">
-            {quizHistory.length ? Math.round(quizHistory.reduce((sum, item) => sum + (item.averageScore || 0), 0) / quizHistory.length) : 0}%
+                        {quizHistory.length ? Math.round(quizHistory.reduce((sum, item) => sum + (item.bestScore?.percentage || 0), 0) / quizHistory.length) : 0}%
           </div>
           <div className="text-sm text-gray-600">Average Score</div>
         </Card>
@@ -166,7 +180,7 @@ export const QuizHistory: React.FC<QuizHistoryProps> = ({ userId }) => {
         </Card>
         <Card className="p-4">
           <div className="text-2xl font-bold text-orange-600">
-            {quizHistory.filter(item => item.passed).length}
+                        {quizHistory.filter(item => (item.bestScore?.percentage || 0) >= 70).length}
           </div>
           <div className="text-sm text-gray-600">Passed Quizzes</div>
         </Card>
@@ -191,7 +205,7 @@ export const QuizHistory: React.FC<QuizHistoryProps> = ({ userId }) => {
                       <div className={`px-2 py-1 rounded-full text-xs font-medium ${getGradeColor(item.bestScore?.percentage || 0)}`}>
                         Grade: {getGrade(item.bestScore?.percentage || 0)}
                       </div>
-                      {item.passed && (
+                                            {(item.bestScore?.percentage || 0) >= 70 && (
                         <div className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                           Passed
                         </div>
@@ -234,13 +248,13 @@ export const QuizHistory: React.FC<QuizHistoryProps> = ({ userId }) => {
                           {item.bestScore?.percentage || 0}%
                         </span>
                         <span className="text-gray-500 ml-1">
-                          ({item.bestScore?.raw || 0} correct)
+                                                    ({item.bestScore?.percentage || 0}% score)
                         </span>
                       </div>
                       <div className="text-sm text-gray-600">
                         <span className="font-medium">Average:</span>{' '}
                         <span className="font-bold">
-                          {Math.round(item.averageScore || 0)}%
+                                                    {Math.round(item.bestScore?.percentage || 0)}%
                         </span>
                       </div>
                     </div>
@@ -258,14 +272,11 @@ export const QuizHistory: React.FC<QuizHistoryProps> = ({ userId }) => {
                       </div>
                       
                       <div className="flex gap-2">
-                        {item.canRetake && (
+                                                {item.totalAttempts < 3 && onRetakeQuiz && (
                           <Button 
                             variant="outline" 
                             size="sm"
-                            onClick={() => {
-                              // TODO: Implement retake quiz
-                              console.log('Retake quiz:', item.quizId);
-                            }}
+                            onClick={() => onRetakeQuiz(item.quizId)}
                           >
                             Retake
                           </Button>

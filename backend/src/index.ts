@@ -1,3 +1,4 @@
+// index.tsx
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -15,6 +16,7 @@ import userRoutes from './routes/user.routes';
 import courseRoutes from './routes/course.routes';
 import chatRoutes from './routes/chat.routes';
 import quizRoutes from './routes/quiz.routes';
+// removed quiz-new.routes import because file was deleted
 import analyticsRoutes from './routes/analytics.routes';
 import aiRoutes from './routes/ai.routes';
 
@@ -23,8 +25,10 @@ import { errorHandler } from './middleware/errorHandler';
 import { authMiddleware } from './middleware/auth';
 
 // Import services
-import { initializeAI } from './services/ai.service';
+import { initializeServices } from './services';
+import { mcpClient } from './mcp/client';
 import { logger } from './utils/logger';
+import { seedDatabase } from './utils/seedData';
 
 // Load environment variables
 dotenv.config();
@@ -96,6 +100,7 @@ app.use('/api/users', authMiddleware, userRoutes);
 app.use('/api/courses', authMiddleware, courseRoutes);
 app.use('/api/chat', authMiddleware, chatRoutes);
 app.use('/api/quiz', authMiddleware, quizRoutes);
+// removed /api/quiz-new (file deleted)
 app.use('/api/analytics', authMiddleware, analyticsRoutes);
 app.use('/api/ai', authMiddleware, aiRoutes);
 
@@ -165,19 +170,23 @@ const connectDB = async (): Promise<void> => {
     const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/profense';
     await mongoose.connect(mongoURI);
     logger.info('✅ Connected to MongoDB');
+    
+    // Seed database with sample data for development
+    if (process.env.NODE_ENV === 'development') {
+      await seedDatabase();
+    }
   } catch (error) {
     logger.error('❌ MongoDB connection error:', error);
     process.exit(1);
   }
 };
 
-// Initialize AI services
+// Initialize AI services and MCP
 const initServices = async (): Promise<void> => {
   try {
-    await initializeAI();
-    logger.info('✅ AI services initialized');
+    await initializeServices();
   } catch (error) {
-    logger.error('❌ Failed to initialize AI services:', error);
+    logger.error('❌ Failed to initialize services:', error);
     process.exit(1);
   }
 };
@@ -203,6 +212,11 @@ const startServer = async (): Promise<void> => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('🔄 SIGTERM received, shutting down gracefully...');
+  
+  // Disconnect MCP client
+  await mcpClient.disconnect();
+  logger.info('✅ MCP Client disconnected');
+  
   server.close(() => {
     mongoose.connection.close();
     logger.info('💤 Server closed');
@@ -212,6 +226,11 @@ process.on('SIGTERM', async () => {
 
 process.on('SIGINT', async () => {
   logger.info('🔄 SIGINT received, shutting down gracefully...');
+  
+  // Disconnect MCP client
+  await mcpClient.disconnect();
+  logger.info('✅ MCP Client disconnected');
+  
   server.close(() => {
     mongoose.connection.close();
     logger.info('💤 Server closed');

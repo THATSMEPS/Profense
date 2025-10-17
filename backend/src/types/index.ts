@@ -131,6 +131,7 @@ export interface IChatMessage extends Document {
 export interface IChatSession extends Document {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
+  summary?: string;
   title?: string;
   subject?: string;
   currentTopic?: string;
@@ -204,6 +205,7 @@ export interface IQuiz extends Document {
   calculateScore(answers: any[]): { raw: number; percentage: number; grade: string };
   getUserAttempts(userId: string): IQuizAttempt[];
   canUserAttempt(userId: string): boolean;
+  checkAnswer(questionId: string, userAnswer: string): boolean;
 }
 
 export interface IQuestion {

@@ -2,12 +2,14 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle, Circle, Clock, PlayCircle } from 'lucide-react';
 import { Course } from '../../types';
+import { useApp } from '../../context/AppContext';
 
 interface CourseOutlineProps {
   course: Course;
 }
 
 export const CourseOutline: React.FC<CourseOutlineProps> = ({ course }) => {
+  const { teachingMode, learningMode } = useApp();
   const mockTopics = [
     {
       id: '1',

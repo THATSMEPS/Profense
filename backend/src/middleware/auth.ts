@@ -11,10 +11,16 @@ export const authMiddleware = async (
   try {
     let token: string | undefined;
 
+    console.log('Auth middleware - Headers:', {
+      authorization: req.headers.authorization,
+      cookie: req.headers.cookie
+    });
+
     // Get token from header
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.substring(7);
+      console.log('Token extracted from Bearer header:', token ? token.substring(0, 20) + '...' : 'none');
     }
 
     // Get token from cookie (alternative)
@@ -23,17 +29,22 @@ export const authMiddleware = async (
       const tokenCookie = cookies.find((cookie: string) => cookie.trim().startsWith('token='));
       if (tokenCookie) {
         token = tokenCookie.split('=')[1];
+        console.log('Token extracted from cookie:', token ? token.substring(0, 20) + '...' : 'none');
       }
     }
 
     if (!token) {
+      console.log('No token found in request');
       throw new AppError('Access token is required', 401);
     }
 
     // Verify token
+    console.log('Attempting to verify token with JWT_SECRET:', process.env.JWT_SECRET ? 'SET' : 'NOT SET');
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+    console.log('Token decoded successfully:', { id: decoded.id, email: decoded.email });
     
     if (!decoded || !decoded.id) {
+      console.log('Invalid decoded token:', decoded);
       throw new AppError('Invalid token', 401);
     }
 

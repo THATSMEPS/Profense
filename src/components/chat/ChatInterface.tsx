@@ -6,7 +6,8 @@ import { useApp } from '../../context/AppContext';
 import { ChatMessage } from '../../types';
 import { CourseOutline } from './CourseOutline';
 import { TypingMarkdown } from './TypingMarkdown';
-import { chatService } from '../../services/chatService';
+import { ModerationAlert } from './ModerationAlert';
+import { enhancedChatService, ModerationAlert as ModerationAlertType } from '../../services/enhancedChatService';
 import { userService } from '../../services/userService';
 
 interface ChatInterfaceProps {
@@ -35,10 +36,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
   const [message, setMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [currentlyTypingMessageId, setCurrentlyTypingMessageId] = useState<string | null>(null);
+  const [moderationAlert, setModerationAlert] = useState<ModerationAlertType | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleUseSuggestedQuery = (suggestedQuery: string) => {
+    setMessage(suggestedQuery);
+    setModerationAlert(null);
   };
 
   useEffect(scrollToBottom, [chatMessages]);
@@ -118,8 +125,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
     setIsTyping(true);
 
     try {
-      // Use real AI service for chat response
-      const aiResponse = await chatService.sendMessage({
+      // Use enhanced AI service for chat response with moderation
+      const response = await enhancedChatService.sendMessage({
         message: message,
         sessionId: undefined, // Will be handled by backend
         subject: detectedSubject || currentSubject || currentCourse?.subject || 'General',
@@ -129,12 +136,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
         learningMode: learningMode
       });
 
+      // Handle moderation alert if present
+      if (response.moderationAlert) {
+        setModerationAlert(response.moderationAlert);
+      }
+
       const aiMessageId = (Date.now() + 1).toString();
       setCurrentlyTypingMessageId(aiMessageId);
 
       const aiMessage: ChatMessage = {
         id: aiMessageId,
-        content: aiResponse.content || 'No response content received',
+        content: response.message.content || 'No response content received',
         isUser: false,
         timestamp: new Date()
       };
@@ -328,6 +340,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
                 ))}
               </div>
             </motion.div>
+          )}
+
+          {/* Moderation Alert */}
+          {moderationAlert && (
+            <ModerationAlert
+              isVisible={true}
+              reasoning={moderationAlert.reasoning}
+              suggestedQuery={moderationAlert.suggestedQuery}
+              relevantSubjects={moderationAlert.relevantSubjects}
+              onClose={() => setModerationAlert(null)}
+              onUseSuggestion={handleUseSuggestedQuery}
+            />
           )}
 
           {chatMessages.map((msg) => (

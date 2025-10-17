@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { AIResponse, CourseOutline, TeachingMode, VoiceProcessingResult } from '../types';
 import { logger } from '../utils/logger';
 
@@ -15,14 +15,36 @@ class AIService {
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     // Use a stable model name that's known to work
     const modelName = 'gemini-2.5-flash';
+    
+    // Safety settings to prevent false positives
+    const safetySettings = [
+      {
+        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold: HarmBlockThreshold.BLOCK_NONE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold: HarmBlockThreshold.BLOCK_NONE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold: HarmBlockThreshold.BLOCK_NONE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold: HarmBlockThreshold.BLOCK_NONE,
+      },
+    ];
+    
     this.model = this.genAI.getGenerativeModel({ 
       model: modelName,
       generationConfig: {
         temperature: 0.7,
         topP: 0.8,
         topK: 40,
-        maxOutputTokens: 2048,
-      }
+        maxOutputTokens: 8192, // Increased for quiz generation
+      },
+      safetySettings,
     });
     this.chatModel = this.genAI.getGenerativeModel({ 
       model: modelName,
@@ -30,8 +52,9 @@ class AIService {
         temperature: 0.9,
         topP: 0.95,
         topK: 40,
-        maxOutputTokens: 1024,
-      }
+        maxOutputTokens: 4096,
+      },
+      safetySettings,
     });
   }
 
@@ -79,7 +102,34 @@ class AIService {
       const prompt = this.buildTeachingPrompt(message, context);
       const result = await this.chatModel.generateContent(prompt);
       const response = await result.response;
-      const text = response.text();
+      let text = response.text();
+      
+      // Check for empty or problematic responses
+      if (!text || text.trim().length === 0) {
+        logger.warn('AI returned empty response, using fallback');
+        text = "I'd be happy to help you with that! Could you please provide a bit more detail about what specifically you'd like to learn?";
+      }
+      
+      // Check for very short responses that might be cut off
+      if (text.trim().length < 50 && !message.toLowerCase().includes('hi') && !message.toLowerCase().includes('hello')) {
+        logger.warn('AI returned unusually short response, attempting retry');
+        // Try a simplified prompt for retry
+        const simplePrompt = `You are a helpful AI tutor. The student asked: "${message}" about the topic "${context.currentTopic}". Please provide a detailed, educational response (at least 200 words) that fully explains the concept with examples.`;
+        
+        try {
+          const retryResult = await this.chatModel.generateContent(simplePrompt);
+          const retryResponse = await retryResult.response;
+          const retryText = retryResponse.text();
+          
+          if (retryText && retryText.trim().length > text.trim().length) {
+            text = retryText;
+            logger.info('Retry produced better response');
+          }
+        } catch (retryError) {
+          logger.warn('Retry failed, using original response:', retryError);
+        }
+      }
+      
       // Analyze the response for adaptive features
       const aiResponse = await this.analyzeTeachingResponse(text, message, context);
       logger.info(`Generated teaching response for topic: ${context.currentTopic}`);
@@ -108,15 +158,44 @@ class AIService {
   }): Promise<any> {
     try {
       const prompt = this.buildContextualQuizPrompt(options);
+      logger.info('Quiz generation prompt created', { 
+        subject: options.subject, 
+        topic: options.topic,
+        difficulty: options.difficulty,
+        questionCount: options.questionCount,
+        questionTypes: options.questionTypes 
+      });
       
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
+      
+      // Check if content was blocked
+      if (response.promptFeedback?.blockReason) {
+        logger.error('Content generation blocked:', {
+          blockReason: response.promptFeedback.blockReason,
+          safetyRatings: response.promptFeedback.safetyRatings
+        });
+        throw new Error(`Content was blocked: ${response.promptFeedback.blockReason}`);
+      }
+      
       const text = response.text();
       
-      logger.info(`Generated contextual quiz for ${options.subject} - ${options.topic}`);
+      logger.info(`AI response received, length: ${text.length} characters`);
+      logger.info(`AI response preview: ${text.substring(0, 200)}...`);
+      
+      if (!text || text.trim().length === 0) {
+        logger.error('Empty response from AI model');
+        throw new Error('AI model returned empty response');
+      }
+      
       return this.parseContextualQuiz(text, options);
-    } catch (error) {
-      logger.error('Error generating contextual quiz:', error);
+    } catch (error: any) {
+      logger.error('Error generating contextual quiz:', {
+        error: error.message,
+        stack: error.stack,
+        subject: options.subject,
+        topic: options.topic
+      });
       throw new Error('Failed to generate quiz based on conversation context');
     }
   }
@@ -360,13 +439,18 @@ ${modeInstructions[context.teachingMode]}
 Response Guidelines:
 1. Start with a warm, encouraging tone
 2. Use the suggested conversational starter naturally
-3. Provide clear explanations with relatable examples
-4. Ask engaging questions to check understanding
-5. Suggest concrete next steps or practice opportunities
-6. Keep responses focused but comprehensive (300-500 words)
-7. If off-topic, gently redirect with: "That's an interesting question! Let's first master [current topic], then we can explore that..."
+3. Provide COMPLETE explanations with relatable examples - don't cut off mid-sentence
+4. Include ALL relevant formulas, concepts, and detailed explanations
+5. Ask engaging questions to check understanding
+6. Suggest concrete next steps or practice opportunities
+7. Aim for comprehensive responses (400-800 words for complex topics)
+8. Always finish your thoughts completely - never end abruptly
+9. If explaining a topic like "ray optics", include ALL major concepts, formulas, and examples
+10. If off-topic, gently redirect with: "That's an interesting question! Let's first master [current topic], then we can explore that..."
 
-Remember: You're not just providing information - you're inspiring learning and building confidence. Respond as Sarah would in her classroom.`;
+CRITICAL: Always provide complete, detailed explanations. Do not cut off explanations mid-sentence or leave concepts partially explained. If the student asks for detailed information, give them a thorough, comprehensive response that fully covers the topic.
+
+Remember: You're not just providing information - you're inspiring learning and building confidence. Respond as Sarah would in her classroom, ensuring every explanation is complete and helpful.`;
   }
 
   /**
@@ -686,66 +770,80 @@ Keywords indicating confidence: "got it", "easy", "understand", "clear", "makes 
     conceptsCovered: string[];
     userId: string;
   }): string {
-    return `You are an expert AI educator creating a personalized quiz based on a student's learning conversation.
-
-CONTEXT:
-- Subject: ${options.subject}
-- Topic: ${options.topic}  
-- Difficulty: ${options.difficulty}
-- Required Questions: ${options.questionCount}
-- Question Types: ${options.questionTypes.join(', ')}
-
-STUDENT'S LEARNING CONVERSATION:
-${options.conversationContext || 'No conversation context available'}
-
-CONCEPTS COVERED:
-${options.conceptsCovered.length > 0 ? options.conceptsCovered.join(', ') : 'General topics'}
-
-TASK:
-Generate a comprehensive quiz with exactly ${options.questionCount} questions that:
-1. Tests understanding of concepts discussed in the conversation
-2. Includes various question types: ${options.questionTypes.join(', ')}
-3. Matches ${options.difficulty} difficulty level
-4. Provides clear explanations for each answer
-5. Focuses on practical application of learned concepts
-
-CRITICAL JSON FORMATTING REQUIREMENTS:
-- Return ONLY valid JSON, no additional text, no markdown formatting
-- Do not use trailing commas anywhere in the JSON
-- All strings must be properly quoted and escaped
-- Arrays must be complete with proper closing brackets
-- Object properties must be properly closed with braces
-
-RESPONSE FORMAT:
-{
-  "title": "Quiz title based on conversation topics",
-  "description": "Brief description of what this quiz tests",
-  "questions": [
-    {
+    const questionTypeExamples = {
+      'multiple-choice': `{
       "id": "q1",
       "type": "multiple-choice",
-      "question": "Question text here",
+      "question": "What is a sorting algorithm?",
       "options": [
-        {"id": "a", "text": "Option A", "isCorrect": false},
-        {"id": "b", "text": "Option B", "isCorrect": true},
-        {"id": "c", "text": "Option C", "isCorrect": false},
-        {"id": "d", "text": "Option D", "isCorrect": false}
+        {"id": "a", "text": "A way to search data", "isCorrect": false},
+        {"id": "b", "text": "A method to arrange data in order", "isCorrect": true},
+        {"id": "c", "text": "A data structure", "isCorrect": false},
+        {"id": "d", "text": "A database query", "isCorrect": false}
       ],
       "correctAnswer": "b",
-      "explanation": "Detailed explanation of why this answer is correct",
+      "explanation": "A sorting algorithm is a method to arrange data in a specific order.",
       "difficulty": "${options.difficulty}",
       "points": 1,
-      "concepts": ["${options.topic}"],
+      "concepts": ["sorting", "algorithms"],
       "timeEstimate": 60
-    }
+    }`,
+      'numerical': `{
+      "id": "q2",
+      "type": "numerical",
+      "question": "What is the time complexity of bubble sort in worst case?",
+      "correctAnswer": "O(n^2)",
+      "acceptableRange": 0,
+      "explanation": "Bubble sort has O(n²) time complexity in the worst case.",
+      "difficulty": "${options.difficulty}",
+      "points": 1,
+      "concepts": ["time complexity", "bubble sort"],
+      "timeEstimate": 90
+    }`,
+      'text': `{
+      "id": "q3",
+      "type": "text",
+      "question": "Explain how merge sort works",
+      "correctAnswer": "Merge sort divides the array into halves, recursively sorts them, and merges the sorted halves.",
+      "keywords": ["divide", "conquer", "merge", "recursive"],
+      "explanation": "Merge sort uses divide-and-conquer strategy.",
+      "difficulty": "${options.difficulty}",
+      "points": 2,
+      "concepts": ["merge sort", "divide and conquer"],
+      "timeEstimate": 120
+    }`
+    };
+
+    return `Generate a quiz about ${options.topic} in ${options.subject}.
+
+Difficulty: ${options.difficulty}
+Number of questions: ${Math.min(options.questionCount, 10)}
+Question types to include: ${options.questionTypes.join(', ')}
+
+${options.conversationContext ? `Student's recent conversation:\n${options.conversationContext}\n` : ''}
+
+Generate a JSON quiz with this EXACT structure:
+
+{
+  "title": "Quiz about ${options.topic}",
+  "description": "Test your understanding",
+  "questions": [
+    ${options.questionTypes.map(type => questionTypeExamples[type as keyof typeof questionTypeExamples] || questionTypeExamples['multiple-choice']).join(',\n    ')}
   ]
 }
 
-IMPORTANT: 
-- Return ONLY the JSON object above, nothing else
-- Ensure all ${options.questionCount} questions follow the exact format shown
-- Double-check that all arrays and objects are properly closed
-- No trailing commas after the last element in arrays or objects`;
+CRITICAL INSTRUCTIONS:
+1. Return ONLY valid JSON starting with { and ending with }
+2. NO markdown code blocks (no \`\`\`json)
+3. NO comments in the JSON
+4. Include ${Math.min(options.questionCount, 10)} questions total
+5. Mix the question types: ${options.questionTypes.join(', ')}
+6. All questions must have: id, type, question, correctAnswer, explanation, difficulty, points, concepts, timeEstimate
+7. Multiple-choice questions need an "options" array
+8. Numerical questions need "acceptableRange" 
+9. Text questions need "keywords" array
+
+Start your response with { now:`;
   }
 
   /**
@@ -779,88 +877,170 @@ Return JSON with analysis structure including overallPerformance, strengths, wea
   }
 
   /**
+   * Cleans a JSON string by removing common syntax errors and handling truncation.
+   */
+  private cleanJsonString(jsonString: string): string {
+    // Remove ```json and ``` if they exist
+    let cleaned = jsonString.replace(/```json/g, '').replace(/```/g, '');
+
+    // Remove trailing commas from objects and arrays that JSON.parse fails on.
+    cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
+    
+    // Attempt to remove comments, though this is less reliable with regex
+    cleaned = cleaned.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '');
+
+    // Handle incomplete JSON - if it looks like it was cut off, try to close it
+    cleaned = cleaned.trim();
+    
+    // If JSON ends with an incomplete string, try to complete it
+    if (cleaned.endsWith('"') === false && cleaned.lastIndexOf('"') > cleaned.lastIndexOf(':')) {
+      // String was cut off, remove it back to the last complete field
+      const lastColon = cleaned.lastIndexOf(':');
+      const lastComma = cleaned.lastIndexOf(',', lastColon);
+      if (lastComma > 0) {
+        cleaned = cleaned.substring(0, lastComma);
+        logger.warn('Removed incomplete field from truncated JSON');
+      }
+    }
+    
+    // Count opening and closing braces/brackets to detect incomplete JSON
+    const openBraces = (cleaned.match(/\{/g) || []).length;
+    const closeBraces = (cleaned.match(/\}/g) || []).length;
+    const openBrackets = (cleaned.match(/\[/g) || []).length;
+    const closeBrackets = (cleaned.match(/\]/g) || []).length;
+    
+    // Handle incomplete questions array
+    if (openBraces > closeBraces || openBrackets > closeBrackets) {
+      // Find the last complete question object
+      let lastCompleteQuestion = -1;
+      let braceCount = 0;
+      let inQuestionsArray = false;
+      
+      for (let i = 0; i < cleaned.length; i++) {
+        if (cleaned[i] === '{') braceCount++;
+        if (cleaned[i] === '}') {
+          braceCount--;
+          // Check if this closes a question object (we're at brace level 2: root object > questions array > question object)
+          if (braceCount === 2 && inQuestionsArray) {
+            lastCompleteQuestion = i;
+          }
+        }
+        // Detect if we're inside the questions array
+        if (cleaned.substring(i, i + 12) === '"questions"') {
+          inQuestionsArray = true;
+        }
+      }
+      
+      if (lastCompleteQuestion !== -1) {
+        // Truncate to last complete question and close the array and root object
+        cleaned = cleaned.substring(0, lastCompleteQuestion + 1) + ']}';
+        logger.warn('Truncated incomplete JSON at last complete question');
+      } else {
+        // Fallback: just add missing closing braces/brackets
+        const missingBraces = openBraces - closeBraces;
+        const missingBrackets = openBrackets - closeBrackets;
+        cleaned += ']'.repeat(missingBrackets) + '}'.repeat(missingBraces);
+        logger.warn(`Added ${missingBrackets} brackets and ${missingBraces} braces to close JSON`);
+      }
+    }
+
+    return cleaned.trim();
+  }
+
+  /**
+   * Map difficulty levels from user-facing to database schema
+   */
+  private mapDifficulty(difficulty: string): 'easy' | 'medium' | 'hard' {
+    const difficultyMap: Record<string, 'easy' | 'medium' | 'hard'> = {
+      'beginner': 'easy',
+      'intermediate': 'medium',
+      'advanced': 'hard',
+      'easy': 'easy',
+      'medium': 'medium',
+      'hard': 'hard'
+    };
+    return difficultyMap[difficulty.toLowerCase()] || 'medium';
+  }
+
+  /**
    * Parse contextual quiz response
    */
   private parseContextualQuiz(text: string, options: any): any {
     try {
-      // First try to extract JSON from the response
-      let jsonText = this.extractJsonFromText(text);
+      let jsonString = '';
       
-      if (!jsonText) {
-        throw new Error('No valid JSON found in AI response');
+      // Remove any markdown formatting
+      let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      
+      // First, try to find a JSON block marked with ```json
+      const jsonBlockMatch = text.match(/```json([\s\S]*)```/);
+      
+      if (jsonBlockMatch && jsonBlockMatch[1]) {
+        jsonString = jsonBlockMatch[1];
+      } else {
+        // If no marked block, find the JSON object
+        const startIndex = cleanText.indexOf('{');
+        const lastIndex = cleanText.lastIndexOf('}');
+        
+        if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
+          jsonString = cleanText.substring(startIndex, lastIndex + 1);
+        } else {
+          // Try to extract any JSON-like structure
+          const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            jsonString = jsonMatch[0];
+          }
+        }
       }
 
-      // Clean the JSON text to handle common AI formatting issues
-      jsonText = this.cleanJsonText(jsonText);
-      
-      const parsed = JSON.parse(jsonText);
-      
-      // Validate the parsed structure
-      if (!parsed.questions || !Array.isArray(parsed.questions)) {
-        throw new Error('Invalid quiz structure: missing questions array');
+      if (jsonString) {
+        const cleanedJson = this.cleanJsonString(jsonString);
+        
+        try {
+          const parsed = JSON.parse(cleanedJson);
+          
+          // Validate and fix the parsed quiz
+          if (!parsed.questions || !Array.isArray(parsed.questions)) {
+            throw new Error('No questions array found in response');
+          }
+          
+          // Ensure all questions have required fields
+          parsed.questions = parsed.questions.map((q: any, index: number) => ({
+            ...q,
+            id: q.id || `q${index + 1}`,
+            concepts: q.concepts || [options.topic],
+            timeEstimate: q.timeEstimate || 60,
+            difficulty: this.mapDifficulty(q.difficulty || options.difficulty),
+            points: q.points || 1
+          }));
+
+          // Filter out incomplete questions
+          parsed.questions = parsed.questions.filter((q: any) => 
+            q.question && q.question.trim().length > 0
+          );
+
+          if (parsed.questions.length === 0) {
+            throw new Error('No valid questions found in response');
+          }
+
+          logger.info(`Successfully parsed quiz with ${parsed.questions.length} questions`);
+          return parsed;
+        } catch (parseError: any) {
+          logger.error('JSON parse error:', parseError.message);
+          logger.error('Cleaned JSON string (first 1000 chars):', cleanedJson.substring(0, 1000));
+          throw new Error('Invalid JSON structure in AI response');
+        }
       }
-
-      // Ensure all questions have required fields
-      parsed.questions = parsed.questions.map((q: any, index: number) => ({
-        id: q.id || `q${index + 1}`,
-        type: q.type || 'multiple-choice',
-        question: q.question || `Question ${index + 1}`,
-        options: q.options || [],
-        correctAnswer: q.correctAnswer || (q.options && q.options.length > 0 ? q.options[0].id : 'a'),
-        explanation: q.explanation || 'No explanation provided',
-        difficulty: q.difficulty || options.difficulty || 'intermediate',
-        points: q.points || 1,
-        concepts: q.concepts || [options.topic],
-        timeEstimate: q.timeEstimate || 60
-      }));
-
-      // Ensure the quiz has required metadata
-      parsed.title = parsed.title || `${options.subject} Quiz: ${options.topic}`;
-      parsed.description = parsed.description || `A quiz covering ${options.topic} concepts`;
-      
-      return parsed;
+      throw new Error('No valid JSON found in AI response');
     } catch (error) {
-      logger.error('Error parsing contextual quiz:', error);
-      logger.error('AI Response text:', text.substring(0, 500) + '...');
+      logger.error('Error parsing contextual quiz:', {
+        error,
+        rawTextLength: text.length,
+        rawTextFull: text,
+        rawTextPreview: text.substring(0, 500) + '...',
+      });
       throw new Error('Failed to parse quiz from AI response');
     }
-  }
-
-  /**
-   * Extract JSON from AI response text
-   */
-  private extractJsonFromText(text: string): string | null {
-    // Try multiple patterns to extract JSON
-    const patterns = [
-      /\{[\s\S]*?\}/,  // Basic JSON object
-      /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON in code blocks
-      /```\s*(\{[\s\S]*?\})\s*```/,  // JSON in generic code blocks
-    ];
-
-    for (const pattern of patterns) {
-      const match = text.match(pattern);
-      if (match) {
-        return match[1] || match[0];
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Clean JSON text to handle common AI formatting issues
-   */
-  private cleanJsonText(jsonText: string): string {
-    // Remove common issues that cause JSON parsing errors
-    return jsonText
-      // Remove trailing commas before closing brackets/braces
-      .replace(/,(\s*[\}\]])/g, '$1')
-      // Fix incomplete arrays (add closing bracket if missing)
-      .replace(/,\s*$/, '')
-      // Remove any text before the first {
-      .replace(/^[^{]*/, '')
-      // Remove any text after the last }
-      .replace(/[^}]*$/, '');
   }
 
   /**

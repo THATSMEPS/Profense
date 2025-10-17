@@ -1,61 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Clock, CheckCircle, AlertCircle } from 'lucide-react';
-
-interface Question {
-  id: string;
-  type: 'multiple-choice' | 'true-false' | 'text' | 'numerical';
-  question: string;
-  options?: { id: string; text: string; isCorrect?: boolean }[];
-  correctAnswer?: string;
-  points: number;
-  timeEstimate: number;
-  hints?: string[];
-}
+import { CheckCircle, AlertCircle } from 'lucide-react';
+import { Question } from '../../types';
 
 interface QuizInterfaceProps {
   quiz?: {
     id: string;
     title: string;
-    description: string;
+    description?: string;
     questions: Question[];
     timeLimit: number;
   };
-  onSubmit?: (answers: any[]) => void;
-  onCancel?: () => void;
+  onComplete?: (result: any) => void;
+  onExit?: () => void;
 }
 
 export const QuizInterface: React.FC<QuizInterfaceProps> = ({
   quiz,
-  onSubmit,
-  onCancel
+  onComplete,
+  onExit
 }) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<{ [key: string]: any }>({});
-  const [timeRemaining, setTimeRemaining] = useState(quiz?.timeLimit || 600);
   const [showHints, setShowHints] = useState<{ [key: string]: boolean }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (timeRemaining <= 0) {
-      handleSubmit();
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setTimeRemaining(prev => prev - 1);
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [timeRemaining]);
-
-  if (!quiz) {
+  if (!quiz || !quiz.questions || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-700 mb-2">No Quiz Available</h3>
-          <p className="text-gray-500">Please select a quiz to begin.</p>
+          <p className="text-gray-500">
+            {!quiz ? 'Please select a quiz to begin.' : 'This quiz has no questions.'}
+          </p>
         </div>
       </div>
     );
@@ -63,12 +41,6 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
 
   const currentQuestion = quiz.questions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / quiz.questions.length) * 100;
-
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
 
   const handleAnswerChange = (questionId: string, answer: any) => {
     setAnswers(prev => ({
@@ -98,8 +70,8 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
       timeSpent: 0
     }));
 
-    if (onSubmit) {
-      onSubmit(formattedAnswers);
+    if (onComplete) {
+      onComplete(formattedAnswers);
     }
   };
 
@@ -117,22 +89,27 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
       case 'multiple-choice':
         return (
           <div className="space-y-3">
-            {question.options?.map((option) => (
-              <label
-                key={option.id}
-                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
-              >
-                <input
-                  type="radio"
-                  name={`question-${question.id}`}
-                  value={option.id}
-                  checked={userAnswer === option.id}
-                  onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                  className="mr-3"
-                />
-                <span className="text-gray-700">{option.text}</span>
-              </label>
-            ))}
+            {question.options?.map((option, index) => {
+              const optionValue = typeof option === 'string' ? option : option.id;
+              const optionText = typeof option === 'string' ? option : option.text;
+              
+              return (
+                <label
+                  key={optionValue || index}
+                  className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                >
+                  <input
+                    type="radio"
+                    name={`question-${question.id}`}
+                    value={optionValue}
+                    checked={userAnswer === optionValue}
+                    onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                    className="mr-3"
+                  />
+                  <span className="text-gray-700">{optionText}</span>
+                </label>
+              );
+            })}
           </div>
         );
 
@@ -200,15 +177,6 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
             <h1 className="text-2xl font-bold text-gray-900">{quiz.title}</h1>
             <p className="text-gray-600">{quiz.description}</p>
           </div>
-          <div className="text-right">
-            <div className="flex items-center text-lg font-medium text-gray-700">
-              <Clock className="w-5 h-5 mr-2" />
-              <span className={timeRemaining <= 60 ? 'text-red-600' : 'text-gray-700'}>
-                {formatTime(timeRemaining)}
-              </span>
-            </div>
-            <p className="text-sm text-gray-500">Time remaining</p>
-          </div>
         </div>
 
         {/* Progress Bar */}
@@ -237,11 +205,13 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
             <h2 className="text-xl font-semibold text-gray-800 flex-1">
               {currentQuestion.question}
             </h2>
-            <div className="flex items-center text-sm text-gray-500 ml-4">
-              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
-                {currentQuestion.points} points
-              </span>
-            </div>
+            {currentQuestion.points && (
+              <div className="flex items-center text-sm text-gray-500 ml-4">
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
+                  {currentQuestion.points} points
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Hints */}
@@ -280,12 +250,12 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
           </button>
 
           <div className="flex space-x-3">
-            {onCancel && (
+            {onExit && (
               <button
-                onClick={onCancel}
+                onClick={onExit}
                 className="px-6 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Exit Quiz
               </button>
             )}
 

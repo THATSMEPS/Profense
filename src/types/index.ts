@@ -47,6 +47,7 @@ export interface ChatMessage {
 export interface Quiz {
   id: string;
   title: string;
+  description?: string;
   questions: Question[];
   timeLimit?: number;
   subject: string;
@@ -54,12 +55,15 @@ export interface Quiz {
 
 export interface Question {
   id: string;
-  type: 'multiple-choice' | 'numerical' | 'text' | 'image-based';
+  type: 'multiple-choice' | 'numerical' | 'text' | 'image-based' | 'true-false';
   question: string;
-  options?: string[];
+  options?: string[] | { id: string; text: string; isCorrect?: boolean }[];
   correctAnswer: string | number;
   explanation?: string;
   image?: string;
+  points?: number;
+  timeEstimate?: number;
+  hints?: string[];
 }
 
 export interface QuizResult {
@@ -98,24 +102,15 @@ export interface QuizHistoryItem {
   difficulty: 'easy' | 'intermediate' | 'hard';
   totalAttempts: number;
   bestScore: {
-    raw: number;
     percentage: number;
     grade: string;
   };
   lastAttempt: {
-    _id: string;
+    attemptId: string;
     completedAt: Date;
-    score: {
-      raw: number;
-      percentage: number;
-      grade: string;
-    };
-    status: 'completed' | 'in-progress' | 'abandoned';
+    score: number;
   };
-  averageScore: number;
-  passed: boolean;
-  canRetake: boolean;
 }
 
 export type TeachingMode = 'beginner' | 'normal' | 'advanced';
-export type LearningMode = 'teaching' | 'chat';
+export type LearningMode = 'teaching' | 'practice' | 'review' | 'chat';
