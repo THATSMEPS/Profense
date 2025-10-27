@@ -9,11 +9,12 @@ import { QuizInterface } from './components/quiz/QuizInterface';
 import { QuizHistory } from './components/quiz/QuizHistory';
 import { CourseLibrary } from './components/courses/CourseLibrary';
 import { ProfilePage } from './components/profile/ProfilePage';
+import { LearningHub } from './components/learning/LearningHub';
 import { User, Course, Quiz } from './types';
 import { authService } from './services/authService';
 import { quizService } from './services/quizService';
 
-type Page = 'landing' | 'auth' | 'dashboard' | 'chat' | 'quiz' | 'quiz-history' | 'courses' | 'profile';
+type Page = 'landing' | 'auth' | 'dashboard' | 'chat' | 'quiz' | 'quiz-history' | 'courses' | 'profile' | 'learning';
 
 // Loading component
 const LoadingSpinner: React.FC = () => (
@@ -293,6 +294,8 @@ const AppContent: React.FC = () => {
         return <CourseLibrary onSelectCourse={handleStartLearning} />;
       case 'profile':
         return <ProfilePage onLogout={handleLogout} />;
+      case 'learning':
+        return <LearningHub />;
       default:
         return (
           <Dashboard 
@@ -316,6 +319,7 @@ const AppContent: React.FC = () => {
               { key: 'dashboard', label: 'Dashboard' },
               { key: 'courses', label: 'Courses' },
               { key: 'chat', label: 'Learn' },
+              { key: 'learning', label: 'AI Learning Hub' },
               { key: 'quiz-history', label: 'Quiz History' },
               { key: 'profile', label: 'Profile' }
             ].map(({ key, label }) => (

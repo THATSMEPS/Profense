@@ -3,9 +3,10 @@ import { EnhancedAIService, getEnhancedAIService } from './enhanced-ai.service';
 import { mcpClient } from '../mcp/client';
 import { 
   mcpServer,
-  manageChatContextTool,
-  moderateContentTool,
-  evaluateQuizTool
+  evaluateQuizTool,
+  generateLearningPathTool,
+  generatePracticeProblemsTool,
+  findConceptConnectionsTool
 } from '../mcp/server';
 import { logger } from '../utils/logger';
 
@@ -38,12 +39,13 @@ export const initializeServices = async (): Promise<void> => {
     // 3. Pass the server instance and tool handlers to the client and then connect.
     const client = services.mcpClient();
     client.setServerInstance(mcpServer, {
-      manageChatContext: manageChatContextTool,
-      moderateContent: moderateContentTool,
-      evaluateQuiz: evaluateQuizTool
+      evaluateQuiz: evaluateQuizTool,
+      generateLearningPath: generateLearningPathTool,
+      generatePracticeProblems: generatePracticeProblemsTool,
+      findConceptConnections: findConceptConnectionsTool
     });
     await client.connect();
-    logger.info('✅ MCP Client connected.');
+    logger.info('✅ MCP Client connected with 4 tools.');
 
   } catch (error) {
     logger.error('❌ Failed to initialize application services:', error);

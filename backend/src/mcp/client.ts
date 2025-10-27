@@ -250,6 +250,90 @@ export class MCPClientService {
     }
   }
 
+  async generateLearningPath(
+    userId: string,
+    goalTopic: string,
+    timeframe?: number
+  ): Promise<any> {
+    if (!this.isConnected || !this.mcpServerInstance) {
+      throw new Error('MCP Client not connected');
+    }
+
+    try {
+      const handler = this.toolHandlers.get('generate_learning_path');
+      if (!handler) {
+        throw new Error('generate_learning_path tool handler not found');
+      }
+
+      const result = await handler({
+        userId,
+        goalTopic,
+        timeframe
+      });
+
+      return result;
+    } catch (error) {
+      logger.error('Error generating learning path:', error);
+      throw error;
+    }
+  }
+
+  async generatePracticeProblems(
+    topic: string,
+    difficulty: 'beginner' | 'intermediate' | 'advanced',
+    count: number,
+    userId: string
+  ): Promise<any> {
+    if (!this.isConnected || !this.mcpServerInstance) {
+      throw new Error('MCP Client not connected');
+    }
+
+    try {
+      const handler = this.toolHandlers.get('generate_practice_problems');
+      if (!handler) {
+        throw new Error('generate_practice_problems tool handler not found');
+      }
+
+      const result = await handler({
+        topic,
+        difficulty,
+        count,
+        userId
+      });
+
+      return result;
+    } catch (error) {
+      logger.error('Error generating practice problems:', error);
+      throw error;
+    }
+  }
+
+  async findConceptConnections(
+    currentTopic: string,
+    userId: string
+  ): Promise<any> {
+    if (!this.isConnected || !this.mcpServerInstance) {
+      throw new Error('MCP Client not connected');
+    }
+
+    try {
+      const handler = this.toolHandlers.get('find_concept_connections');
+      if (!handler) {
+        throw new Error('find_concept_connections tool handler not found');
+      }
+
+      const result = await handler({
+        currentTopic,
+        userId
+      });
+
+      return result;
+    } catch (error) {
+      logger.error('Error finding concept connections:', error);
+      throw error;
+    }
+  }
+
   isClientConnected(): boolean {
     return this.isConnected;
   }

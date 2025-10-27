@@ -141,6 +141,7 @@ export interface IChatSession extends Document {
     previousConcepts: string[];
     sessionType: 'teaching' | 'chat' | 'quiz-prep' | 'review';
     learningObjectives: string[];
+    messageCount?: number;
   };
   messages: IChatMessage[];
   sessionStatus: 'active' | 'paused' | 'completed' | 'archived';

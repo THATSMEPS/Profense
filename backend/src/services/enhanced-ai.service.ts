@@ -247,6 +247,29 @@ Response:`;
     });
   }
 
+  /**
+   * Generate raw JSON response from AI without teaching wrappers
+   * Use this for structured data generation (learning paths, problems, etc.)
+   */
+  async generateStructuredJSON(prompt: string): Promise<{ content: string; confidence: number }> {
+    try {
+      // Call AI service directly without teaching context
+      const result = await this.aiService['chatModel'].generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      
+      logger.info(`Generated structured JSON response (${text.length} chars)`);
+      
+      return {
+        content: text,
+        confidence: 0.9
+      };
+    } catch (error) {
+      logger.error('Error generating structured JSON:', error);
+      throw error;
+    }
+  }
+
   async processVoiceInput(audioData: Buffer) {
     return this.aiService.processVoiceInput(audioData);
   }

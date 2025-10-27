@@ -5,12 +5,13 @@ import { User } from '../models/User';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest, APIResponse, CreateCourseRequest, ChatRequest } from '../types';
 import { logger } from '../utils/logger';
+import { checkBeforeCourseCreation } from '../services/courseDeduplication.service';
 
 const router = express.Router();
 
 /**
  * @route   POST /api/ai/generate-course
- * @desc    Generate a new course using AI
+ * @desc    Generate a new course using AI (with deduplication)
  * @access  Private
  */
 router.post('/generate-course', asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -28,7 +29,7 @@ router.post('/generate-course', asyncHandler(async (req: AuthRequest, res: Respo
 
   const aiService = getAIService();
 
-  // Generate course outline
+  // Generate course outline using AI
   const courseOutline = await aiService.generateCourseOutline(
     topic,
     subject,
@@ -41,48 +42,109 @@ router.post('/generate-course', asyncHandler(async (req: AuthRequest, res: Respo
     }
   );
 
-  // Create course in database
-  const course = new Course({
-    title: courseOutline.title,
-    description: `AI-generated course on ${topic}`,
-    subject: courseOutline.subject,
-    difficulty: courseOutline.difficulty as any,
-    estimatedDuration: courseOutline.estimatedDuration,
-    topics: courseOutline.topics.map((topic, index) => ({
-      title: topic.title,
-      description: topic.description,
-      content: `Content for ${topic.title}`, // This would be generated in detail
-      duration: topic.duration,
-      difficulty: difficulty as any || 'beginner',
-      subtopics: topic.subtopics.map(sub => ({
-        title: sub,
-        content: `Content for ${sub}`,
-        examples: [],
-        practiceQuestions: []
-      })),
-      resources: [],
-      order: index,
-      prerequisites: []
+  // Prepare topics from outline
+  const proposedTopics = courseOutline.topics.map((topic, index) => ({
+    title: topic.title,
+    description: topic.description,
+    content: `Content for ${topic.title}`, // This would be generated in detail
+    duration: topic.duration,
+    difficulty: (difficulty as any) || 'beginner',
+    subtopics: topic.subtopics.map(sub => ({
+      title: sub,
+      content: `Content for ${sub}`,
+      examples: [],
+      practiceQuestions: []
     })),
-    prerequisites: courseOutline.prerequisites,
-    learningObjectives: courseOutline.learningObjectives,
-    createdBy: 'ai'
-  });
+    resources: [],
+    order: index,
+    prerequisites: []
+  }));
 
-  await course.save();
+  // CHECK FOR DUPLICATES before creating
+  const deduplicationCheck = await checkBeforeCourseCreation(
+    courseOutline.title,
+    courseOutline.subject,
+    courseOutline.difficulty,
+    proposedTopics
+  );
 
-  logger.info(`AI generated course: ${course.title} for user: ${user.email}`);
+  logger.info(`Deduplication check result: ${deduplicationCheck.action} - ${deduplicationCheck.message}`);
+
+  let course: any;
+  let actionTaken: string = 'new_course_created'; // Default action
+
+  if (deduplicationCheck.action === 'use_existing') {
+    // Use existing course - no need to create new one
+    course = deduplicationCheck.existingCourse;
+    actionTaken = 'existing_course_returned';
+    
+    logger.info(`Using existing course: ${course.title} (ID: ${course._id})`);
+
+  } else if (deduplicationCheck.action === 'extend_existing') {
+    // Extend existing course with new topics
+    course = await Course.findById(deduplicationCheck.existingCourse._id);
+    
+    if (course && deduplicationCheck.newTopicsToAdd) {
+      // Find the highest order number
+      const maxOrder = course.topics.reduce((max, t) => Math.max(max, t.order), -1);
+      
+      // Add only truly new topics
+      const newTopicsData = proposedTopics.filter(pt => 
+        deduplicationCheck.newTopicsToAdd!.includes(pt.title)
+      );
+
+      newTopicsData.forEach((newTopic, idx) => {
+        newTopic.order = maxOrder + 1 + idx;
+        course.topics.push(newTopic);
+      });
+
+      await course.save();
+      actionTaken = 'course_extended';
+      
+      logger.info(`Extended course "${course.title}" with ${newTopicsData.length} new topics`);
+    }
+
+  } else {
+    // Create new course - no duplicates found
+    course = new Course({
+      title: courseOutline.title,
+      description: `AI-generated course on ${topic}`,
+      subject: courseOutline.subject,
+      difficulty: courseOutline.difficulty as any,
+      estimatedDuration: courseOutline.estimatedDuration,
+      topics: proposedTopics,
+      prerequisites: courseOutline.prerequisites,
+      learningObjectives: courseOutline.learningObjectives,
+      createdBy: 'ai'
+    });
+
+    await course.save();
+    actionTaken = 'new_course_created';
+    
+    logger.info(`Created new course: ${course.title} for user: ${user.email}`);
+  }
 
   const response: APIResponse = {
     success: true,
     data: {
-      course: course.toJSON(),
-      outline: courseOutline
+      course: course.toJSON ? course.toJSON() : course,
+      outline: courseOutline,
+      deduplication: {
+        action: actionTaken,
+        message: deduplicationCheck.message,
+        wasNewCourse: actionTaken === 'new_course_created',
+        wasExtended: actionTaken === 'course_extended',
+        topicsAdded: deduplicationCheck.newTopicsToAdd?.length || 0
+      }
     },
-    message: 'Course generated successfully'
+    message: actionTaken === 'new_course_created' 
+      ? 'New course generated successfully'
+      : actionTaken === 'course_extended'
+      ? 'Existing course extended with new topics'
+      : 'Using existing similar course'
   };
 
-  res.status(201).json(response);
+  res.status(actionTaken === 'new_course_created' ? 201 : 200).json(response);
 }));
 
 /**

@@ -24,135 +24,77 @@ router.get('/', asyncHandler(async (req: AuthRequest, res) => {
     sortOrder = 'desc'
   } = req.query as any;
 
-  // For demo purposes, return sample courses
-  // In production, this would query the database
-  const sampleCourses = [
-    {
-      id: '1',
-      title: 'Calculus Fundamentals',
-      subject: 'Mathematics',
-      difficulty: 'intermediate',
-      description: 'Master the basics of differential and integral calculus',
-      thumbnail: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=300',
-      duration: '6 weeks',
-      topics: ['Limits', 'Derivatives', 'Integrals', 'Applications'],
-      enrolledCount: 1240,
-      rating: 4.8,
-      progress: 0,
-      isEnrolled: false
-    },
-    {
-      id: '2',
-      title: 'Physics - Mechanics',
-      subject: 'Physics',
-      difficulty: 'intermediate',
-      description: 'Understand motion, forces, and energy in classical mechanics',
-      thumbnail: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=300',
-      duration: '8 weeks',
-      topics: ['Kinematics', 'Newton\'s Laws', 'Work & Energy', 'Momentum'],
-      enrolledCount: 890,
-      rating: 4.7,
-      progress: 0,
-      isEnrolled: false
-    },
-    {
-      id: '3',
-      title: 'Organic Chemistry Basics',
-      subject: 'Chemistry',
-      difficulty: 'intermediate',
-      description: 'Learn the fundamentals of organic compounds and reactions',
-      thumbnail: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=300',
-      duration: '10 weeks',
-      topics: ['Hydrocarbons', 'Functional Groups', 'Reactions', 'Mechanisms'],
-      enrolledCount: 675,
-      rating: 4.6,
-      progress: 0,
-      isEnrolled: false
-    },
-    {
-      id: '4',
-      title: 'Cell Biology',
-      subject: 'Biology',
-      difficulty: 'intermediate',
-      description: 'Explore the structure and function of cells',
-      thumbnail: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=300',
-      duration: '7 weeks',
-      topics: ['Cell Structure', 'Organelles', 'Cell Division', 'Metabolism'],
-      enrolledCount: 1120,
-      rating: 4.9,
-      progress: 0,
-      isEnrolled: false
-    },
-    {
-      id: '5',
-      title: 'Data Structures & Algorithms',
-      subject: 'Computer Science',
-      difficulty: 'intermediate',
-      description: 'Master fundamental programming concepts and problem-solving',
-      thumbnail: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=300',
-      duration: '12 weeks',
-      topics: ['Arrays', 'Linked Lists', 'Trees', 'Graphs', 'Sorting', 'Searching'],
-      enrolledCount: 2340,
-      rating: 4.8,
-      progress: 0,
-      isEnrolled: false
-    },
-    {
-      id: '6',
-      title: 'English Literature Analysis',
-      subject: 'Literature',
-      difficulty: 'intermediate',
-      description: 'Analyze classic and modern literary works',
-      thumbnail: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=300',
-      duration: '9 weeks',
-      topics: ['Poetry Analysis', 'Prose Studies', 'Drama', 'Literary Devices'],
-      enrolledCount: 560,
-      rating: 4.5,
-      progress: 0,
-      isEnrolled: false
-    }
-  ];
-
-  // Apply filters
-  let filteredCourses = sampleCourses;
+  // Build database query
+  const query: any = { isActive: true };
   
+  // Apply filters
   if (subject) {
-    filteredCourses = filteredCourses.filter(course => 
-      course.subject.toLowerCase() === subject.toLowerCase()
-    );
+    query.subject = { $regex: new RegExp(subject as string, 'i') };
   }
   
   if (difficulty) {
-    filteredCourses = filteredCourses.filter(course => 
-      course.difficulty.toLowerCase() === difficulty.toLowerCase()
-    );
+    query.difficulty = difficulty.toLowerCase();
   }
   
   if (search) {
-    const searchTerm = search.toLowerCase();
-    filteredCourses = filteredCourses.filter(course => 
-      course.title.toLowerCase().includes(searchTerm) ||
-      course.description.toLowerCase().includes(searchTerm) ||
-      course.subject.toLowerCase().includes(searchTerm)
-    );
+    query.$text = { $search: search as string };
   }
 
-  // Apply pagination
-  const skip = (parseInt(page) - 1) * parseInt(limit);
-  const paginatedCourses = filteredCourses.slice(skip, skip + parseInt(limit));
-  const total = filteredCourses.length;
-  const pages = Math.ceil(total / parseInt(limit));
+  // Build sort object
+  const sort: any = {};
+  sort[sortBy as string] = sortOrder === 'asc' ? 1 : -1;
+
+  // Calculate pagination
+  const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+  
+  // Get total count
+  const total = await Course.countDocuments(query);
+  
+  // Query courses from database
+  const dbCourses = await Course.find(query)
+    .sort(sort)
+    .skip(skip)
+    .limit(parseInt(limit as string))
+    .lean();
+
+  // Get current user to check enrollment status
+  const user = await User.findById(req.user!.id).select('enrolledCourses');
+  const enrolledCourseIds = user?.enrolledCourses.map(id => id.toString()) || [];
+
+  // Format courses with additional data
+  const courses = dbCourses.map(course => ({
+    id: course._id.toString(),
+    _id: course._id,
+    title: course.title,
+    subject: course.subject,
+    difficulty: course.difficulty,
+    description: course.description,
+    thumbnail: course.thumbnail,
+    estimatedDuration: course.estimatedDuration,
+    topics: course.topics.map(t => t.title),
+    topicsCount: course.topics.length,
+    prerequisites: course.prerequisites,
+    learningObjectives: course.learningObjectives,
+    createdBy: course.createdBy,
+    createdAt: course.createdAt,
+    isEnrolled: enrolledCourseIds.includes(course._id.toString()),
+    progress: 0 // TODO: Calculate actual progress from learning sessions
+  }));
+
+  const pages = Math.ceil(total / parseInt(limit as string));
+
+  logger.info(`Retrieved ${courses.length} courses from database`);
 
   const response: APIResponse = {
     success: true,
     data: { 
-      courses: paginatedCourses,
+      courses,
       total
     },
     message: 'Courses retrieved successfully',
     pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
+      page: parseInt(page as string),
+      limit: parseInt(limit as string),
       total,
       pages
     }
@@ -173,13 +115,70 @@ router.get('/enrolled', asyncHandler(async (req: AuthRequest, res) => {
     throw new AppError('User not found', 404);
   }
 
+  const { ChatSession } = await import('../models/ChatSession');
+
   const enrolledCourses = user.enrolledCourses.filter((course: any) => course.isActive);
+
+  // Enhance courses with progress data from chat sessions
+  const coursesWithProgress = await Promise.all(
+    enrolledCourses.map(async (course: any) => {
+      // Get chat sessions for this course subject
+      const sessions = await ChatSession.find({
+        userId: req.user!.id,
+        subject: course.subject,
+        sessionStatus: { $in: ['active', 'completed'] }
+      });
+
+      // Extract covered topics from chat sessions
+      const coveredTopics = new Set<string>();
+      sessions.forEach(session => {
+        if (session.currentTopic) {
+          coveredTopics.add(session.currentTopic.toLowerCase());
+        }
+        session.conceptsCovered?.forEach(c => coveredTopics.add(c.concept.toLowerCase()));
+      });
+
+      // Calculate progress based on topics covered
+      const totalTopics = course.topics?.length || 1;
+      let completedTopics = 0;
+      
+      course.topics?.forEach((topic: any) => {
+        if (coveredTopics.has(topic.title.toLowerCase())) {
+          completedTopics++;
+        }
+      });
+
+      const progress = Math.round((completedTopics / totalTopics) * 100);
+
+      // Calculate estimated time spent
+      let timeSpent = 0;
+      sessions.forEach(session => {
+        if (session.messages.length > 1) {
+          const firstMsg = session.messages[0].timestamp;
+          const lastMsg = session.messages[session.messages.length - 1].timestamp;
+          const duration = (lastMsg.getTime() - firstMsg.getTime()) / (1000 * 60); // minutes
+          timeSpent += Math.min(duration, 60); // Cap at 1 hour per session
+        }
+      });
+
+      return {
+        ...course.toObject(),
+        progress,
+        completedTopics,
+        totalTopics,
+        timeSpent: Math.round(timeSpent),
+        lastAccessed: sessions.length > 0 
+          ? sessions[sessions.length - 1].lastActivity 
+          : course.enrolledAt || course.createdAt
+      };
+    })
+  );
 
   const response: APIResponse = {
     success: true,
     data: { 
-      courses: enrolledCourses,
-      total: enrolledCourses.length
+      courses: coursesWithProgress,
+      total: coursesWithProgress.length
     },
     message: 'Enrolled courses retrieved successfully'
   };
@@ -193,60 +192,63 @@ router.get('/enrolled', asyncHandler(async (req: AuthRequest, res) => {
  * @access  Private
  */
 router.get('/recommended', asyncHandler(async (req: AuthRequest, res) => {
-  const user = await User.findById(req.user!.id);
+  const user = await User.findById(req.user!.id).select('preferredSubjects learningPreferences enrolledCourses educationLevel');
   
   if (!user) {
     throw new AppError('User not found', 404);
   }
 
-  // Return sample recommended courses based on popular subjects
-  const recommendedCourses = [
-    {
-      id: 'rec-1',
-      title: 'Linear Algebra Essentials',
-      subject: 'Mathematics',
-      difficulty: 'intermediate',
-      description: 'Master vectors, matrices, and linear transformations',
-      thumbnail: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=300',
-      duration: '8 weeks',
-      topics: ['Vectors', 'Matrices', 'Eigenvalues', 'Linear Transformations'],
-      enrolledCount: 980,
-      rating: 4.7,
-      progress: 0,
-      isEnrolled: false,
-      recommendationReason: 'Based on your math interest'
-    },
-    {
-      id: 'rec-2',
-      title: 'Quantum Physics Introduction',
-      subject: 'Physics',
-      difficulty: 'advanced',
-      description: 'Dive into the fascinating world of quantum mechanics',
-      thumbnail: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=300',
-      duration: '10 weeks',
-      topics: ['Wave-Particle Duality', 'Uncertainty Principle', 'Quantum States'],
-      enrolledCount: 450,
-      rating: 4.9,
-      progress: 0,
-      isEnrolled: false,
-      recommendationReason: 'Popular among advanced students'
-    },
-    {
-      id: 'rec-3',
-      title: 'Python Programming Fundamentals',
-      subject: 'Computer Science',
-      difficulty: 'beginner',
-      description: 'Learn programming with Python from scratch',
-      thumbnail: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=300',
-      duration: '6 weeks',
-      topics: ['Variables', 'Functions', 'Classes', 'File I/O'],
-      enrolledCount: 3240,
-      rating: 4.8,
-      progress: 0,
-      isEnrolled: false,
-      recommendationReason: 'Great for beginners'
-    }
-  ];
+  // Build recommendation filter based on user preferences
+  const filter: any = { isActive: true };
+  
+  // Filter by user's preferred subjects (if any)
+  if (user.preferredSubjects && user.preferredSubjects.length > 0) {
+    filter.subject = { 
+      $in: user.preferredSubjects.map(s => new RegExp(s, 'i'))
+    };
+  }
+
+  // Match difficulty to user's teaching mode
+  const teachingMode = user.learningPreferences?.teachingMode || 'normal';
+  if (teachingMode === 'beginner') {
+    filter.difficulty = { $in: ['beginner', 'intermediate'] };
+  } else if (teachingMode === 'advanced') {
+    filter.difficulty = { $in: ['intermediate', 'advanced'] };
+  }
+
+  // Exclude already enrolled courses
+  if (user.enrolledCourses && user.enrolledCourses.length > 0) {
+    filter._id = { $nin: user.enrolledCourses };
+  }
+
+  // Query recommended courses from database
+  const dbCourses = await Course.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(6)
+    .lean();
+
+  // Format courses
+  const recommendedCourses = dbCourses.map(course => ({
+    id: course._id.toString(),
+    _id: course._id,
+    title: course.title,
+    subject: course.subject,
+    difficulty: course.difficulty,
+    description: course.description,
+    thumbnail: course.thumbnail,
+    estimatedDuration: course.estimatedDuration,
+    topics: course.topics.map(t => t.title),
+    topicsCount: course.topics.length,
+    prerequisites: course.prerequisites,
+    learningObjectives: course.learningObjectives,
+    isEnrolled: false,
+    progress: 0,
+    recommendationReason: user.preferredSubjects?.includes(course.subject) 
+      ? `Based on your interest in ${course.subject}`
+      : 'Popular course for your level'
+  }));
+
+  logger.info(`Retrieved ${recommendedCourses.length} recommended courses for user ${user._id}`);
 
   const response: APIResponse = {
     success: true,
@@ -323,19 +325,42 @@ router.post('/:courseId/enroll', asyncHandler(async (req: AuthRequest, res) => {
   
   // Validate ObjectId format
   if (!courseId.match(/^[0-9a-fA-F]{24}$/)) {
-    // For demo purposes, accept simple string IDs like "1", "2", etc.
-    if (!courseId || courseId.length === 0) {
-      throw new AppError('Invalid course ID', 400);
-    }
+    throw new AppError('Invalid course ID format', 400);
   }
 
-  // For demo purposes, simulate successful enrollment
+  // Check if course exists
+  const course = await Course.findById(courseId);
+  if (!course || !course.isActive) {
+    throw new AppError('Course not found', 404);
+  }
+
+  // Get user and check if already enrolled
+  const user = await User.findById(req.user!.id);
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  // Check if already enrolled
+  const isAlreadyEnrolled = user.enrolledCourses.some(
+    id => id.toString() === courseId
+  );
+
+  if (isAlreadyEnrolled) {
+    throw new AppError('Already enrolled in this course', 400);
+  }
+
+  // Add course to user's enrolled courses
+  user.enrolledCourses.push(course._id);
+  await user.save();
+
+  logger.info(`User ${user.email} enrolled in course: ${course.title}`);
+
   const response: APIResponse = {
     success: true,
     data: { 
       courseId,
-      enrolledAt: new Date(),
-      message: 'Successfully enrolled in course'
+      courseTitle: course.title,
+      enrolledAt: new Date()
     },
     message: 'Successfully enrolled in course'
   };

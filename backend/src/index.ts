@@ -16,9 +16,9 @@ import userRoutes from './routes/user.routes';
 import courseRoutes from './routes/course.routes';
 import chatRoutes from './routes/chat.routes';
 import quizRoutes from './routes/quiz.routes';
-// removed quiz-new.routes import because file was deleted
 import analyticsRoutes from './routes/analytics.routes';
 import aiRoutes from './routes/ai.routes';
+import learningRoutes from './routes/learning.routes';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -100,9 +100,9 @@ app.use('/api/users', authMiddleware, userRoutes);
 app.use('/api/courses', authMiddleware, courseRoutes);
 app.use('/api/chat', authMiddleware, chatRoutes);
 app.use('/api/quiz', authMiddleware, quizRoutes);
-// removed /api/quiz-new (file deleted)
 app.use('/api/analytics', authMiddleware, analyticsRoutes);
 app.use('/api/ai', authMiddleware, aiRoutes);
+app.use('/api/learning', authMiddleware, learningRoutes);
 
 // Socket.IO for real-time chat and learning
 io.use((socket, next) => {

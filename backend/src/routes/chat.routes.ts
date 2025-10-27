@@ -3,6 +3,7 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest, APIResponse } from '../types';
 import { getAIService } from '../services/ai.service';
 import { getEnhancedAIService } from '../services/enhanced-ai.service';
+import { getTopicModerationService } from '../services/topicModeration.service';
 import { mcpClient } from '../mcp/client';
 import { ChatSession } from '../models/ChatSession';
 import { logger } from '../utils/logger';
@@ -212,12 +213,16 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
           teachingMode: difficulty as any,
           previousConcepts: [],
           sessionType: learningMode as any,
-          learningObjectives: []
+          learningObjectives: [],
+          messageCount: 0
         },
         messages: [],
         sessionStatus: 'active'
       });
     }
+    
+    // Increment message count for topic discovery phase
+    chatSession.context.messageCount = (chatSession.context.messageCount || 0) + 1;
     
         // Add user message to session
     const userMessage = {
@@ -235,12 +240,108 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
       }
     };
     
-    // Content moderation check
-    const moderationResult = await performContentModeration(message);
     let aiResponse;
     
+    // FIRST: Topic relevance check (prioritize staying on topic!)
+    const topicModerationService = getTopicModerationService();
+    let topicCheck: Awaited<ReturnType<typeof topicModerationService.checkTopicRelevance>> | null = null;
+    
+    // Discovery phase: First 3 messages skip strict topic moderation
+    const isInDiscoveryPhase = (chatSession.context.messageCount || 0) <= 3;
+    
+    if (isInDiscoveryPhase) {
+      logger.info(`Discovery phase active (message ${chatSession.context.messageCount}/3) - skipping strict topic moderation`);
+    }
+    
+    // Only check topic relevance if:
+    // 1. We have a defined current topic
+    // 2. We're past the discovery phase (message 4+)
+    // 3. Message is not a general greeting/question
+    if (chatSession.currentTopic && !isInDiscoveryPhase && !topicModerationService.isGeneralMessage(message)) {
+      // Get recent conversation history for context
+      const recentMessages = chatSession.messages
+        .slice(-5) // Last 5 messages
+        .filter(msg => msg.isUser) // Only user messages
+        .map(msg => msg.content);
+      
+      // Get concepts covered in this session
+      const conceptsCovered = chatSession.conceptsCovered?.map(c => c.concept) || [];
+      
+      topicCheck = await topicModerationService.checkTopicRelevance(message, {
+        currentTopic: chatSession.currentTopic,
+        subject: chatSession.subject || 'General',
+        difficulty: chatSession.context.difficulty,
+        sessionType: chatSession.context.sessionType,
+        conversationHistory: recentMessages,
+        conceptsCovered: conceptsCovered
+      });
+      
+      logger.info(`Topic check for "${chatSession.currentTopic}": ${topicCheck.actionType} (score: ${topicCheck.relevanceScore.toFixed(2)})`);
+      
+      // If topic relevance is below 60%, block the question (don't send to Gemini)
+      if (topicCheck.actionType === 'redirect' || topicCheck.actionType === 'remind') {
+        // Generate blocking message
+        const blockMessage = topicCheck.actionType === 'redirect' 
+          ? topicCheck.message!
+          : `I notice your question seems to be drifting away from our current topic: **${chatSession.currentTopic}**.
+
+To help you learn effectively, please stay focused on ${chatSession.currentTopic}. Here are some questions you could ask instead:
+
+${topicCheck.suggestions?.map(s => `• ${s}`).join('\n') || `• What is ${chatSession.currentTopic}?\n• How does ${chatSession.currentTopic} work?\n• Can you explain ${chatSession.currentTopic}?`}
+
+Let's continue with ${chatSession.currentTopic}! 📚`;
+
+        aiResponse = {
+          content: blockMessage,
+          isUser: false,
+          messageType: 'text' as const,
+          timestamp: new Date(),
+          aiModel: 'topic-moderation',
+          processingTime: 50,
+          metadata: {
+            confidence: 0.95,
+            sentiment: 'neutral' as const,
+            conceptsIdentified: [chatSession.currentTopic],
+            suggestedActions: topicCheck.suggestions || [],
+            nextTopics: [chatSession.currentTopic],
+            teachingMode: difficulty as any
+          }
+        };
+        
+        chatSession.messages.push(aiResponse);
+        await chatSession.save();
+
+        const response: APIResponse = {
+          success: true,
+          data: {
+            message: aiResponse,
+            sessionId: chatSession._id,
+            session: {
+              id: chatSession._id,
+              title: chatSession.title || chatSession.subject,
+              subject: chatSession.subject,
+              messageCount: chatSession.messageCount,
+              lastActivity: chatSession.lastActivity
+            },
+            topicModeration: {
+              type: topicCheck.actionType === 'redirect' ? 'redirect' : 'blocked',
+              relevanceScore: topicCheck.relevanceScore,
+              suggestions: topicCheck.suggestions,
+              currentTopic: chatSession.currentTopic
+            }
+          },
+          message: 'Off-topic question blocked'
+        };
+
+        return res.json(response);
+      }
+    }
+    
+    // SECOND: Content moderation check (only for explicit inappropriate content)
+    const moderationResult = await performContentModeration(message);
+    
     if (!moderationResult.approved) {
-      // If content is not appropriate, provide moderated response
+      // If content is explicitly inappropriate, provide moderated response
       aiResponse = {
         content: `I notice your message might not be directly related to learning. ${moderationResult.reasoning} Let me help you with educational content instead.`,
         isUser: false,
@@ -279,18 +380,20 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
       };
 
       return res.json(response);
-    } else {
-      chatSession.messages.push(userMessage);
-      
-      const aiService = getEnhancedAIService();
+    }
     
-      // Ensure MCP client is connected
-      if (!mcpClient.isClientConnected()) {
-        await mcpClient.connect();
-      }
-      
-      // Handle simple greetings differently
-      if (isGreeting) {
+    // Continue with AI response generation
+    chatSession.messages.push(userMessage);
+    
+    const aiService = getEnhancedAIService();
+
+    // Ensure MCP client is connected
+    if (!mcpClient.isClientConnected()) {
+      await mcpClient.connect();
+    }
+    
+    // Handle simple greetings differently
+    if (isGreeting) {
         const greetingResponses = [
           "Hello! I'm here to help you learn. What would you like to explore today?",
           "Hi there! Ready to dive into some learning? What topic interests you?",
@@ -343,18 +446,6 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
         // Get conversation context for AI
         const conversationContext = chatSession.getContextSummary();
     
-    // Update chat context using MCP - temporarily disabled until MCP implementation is fixed
-    // try {
-    //   await mcpClient.manageChatContext(
-    //     chatSession._id.toString(),
-    //     undefined, // Let MCP generate summary
-    //     undefined, // Let MCP extract key points
-    //     chatSession.context.learningObjectives
-    //   );
-    // } catch (error) {
-    //   logger.warn('Failed to update chat context with MCP:', error);
-    // }
-    
     // Create enhanced context for AI response
     const context = {
       currentTopic: chatSession.currentTopic || currentTopic || subject || 'General Discussion',
@@ -374,38 +465,41 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
     const startTime = Date.now();
     
     // Generate AI response
-    const aiResponse = await aiService.generateTeachingResponse(message, context);
+    const aiResponseData = await aiService.generateTeachingResponse(message, context);
 
-    if (!aiResponse.content || aiResponse.content.trim() === '') {
+    if (!aiResponseData.content || aiResponseData.content.trim() === '') {
       logger.warn('AI returned an empty response, sending a fallback message.');
-      aiResponse.content = "I'm not sure how to respond to that. Could you please rephrase your question?";
+      aiResponseData.content = "I'm not sure how to respond to that. Could you please rephrase your question?";
     }
+    
+    // Note: Topic check already blocked off-topic questions before reaching here
+    // Only on-topic questions (score >= 60%) reach Gemini
     
     const processingTime = Date.now() - startTime;
     
     // Create AI message
     const aiMessage = {
-      content: aiResponse.content,
+      content: aiResponseData.content,
       isUser: false,
       messageType: 'text' as const,
       timestamp: new Date(),
       aiModel: 'gemini-2.5-flash',
       processingTime,
       metadata: {
-        confidence: aiResponse.confidence,
+        confidence: aiResponseData.confidence,
         sentiment: 'neutral' as const,
-        conceptsIdentified: aiResponse.concepts,
+        conceptsIdentified: aiResponseData.concepts,
         suggestedActions: [],
-        nextTopics: aiResponse.nextTopics || [],
-        teachingMode: aiResponse.teachingMode as any
+        nextTopics: aiResponseData.nextTopics || [],
+        teachingMode: aiResponseData.teachingMode as any
       }
     };
     
     chatSession.messages.push(aiMessage);
     
     // Update session context based on AI response
-    if (aiResponse.concepts && aiResponse.concepts.length > 0) {
-      aiResponse.concepts.forEach(concept => {
+    if (aiResponseData.concepts && aiResponseData.concepts.length > 0) {
+      aiResponseData.concepts.forEach(concept => {
         if (!chatSession.context.previousConcepts.includes(concept)) {
           chatSession.context.previousConcepts.push(concept);
         }
@@ -413,12 +507,12 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
         // Add to conceptsCovered with confidence
         const existingConcept = chatSession.conceptsCovered.find(c => c.concept === concept);
         if (existingConcept) {
-          existingConcept.confidence = Math.max(existingConcept.confidence, aiResponse.confidence);
+          existingConcept.confidence = Math.max(existingConcept.confidence, aiResponseData.confidence);
           existingConcept.timestamp = new Date();
         } else {
           chatSession.conceptsCovered.push({
             concept,
-            confidence: aiResponse.confidence,
+            confidence: aiResponseData.confidence,
             timestamp: new Date()
           });
         }
@@ -445,13 +539,14 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
           messageCount: chatSession.messageCount,
           lastActivity: chatSession.lastActivity,
           conceptsCovered: chatSession.conceptsCovered.slice(-5) // Last 5 concepts
-        }
+        },
+        // No topic moderation needed here - off-topic questions are blocked before reaching Gemini
+        topicModeration: undefined
       },
       message: 'Message sent successfully'
     };
 
     res.json(response);
-      }
     }
   } catch (error) {
     console.error('Error processing message:', error);

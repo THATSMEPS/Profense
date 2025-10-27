@@ -111,7 +111,12 @@ const chatSessionSchema = new Schema<IChatSession>({
     learningObjectives: [{
       type: String,
       trim: true
-    }]
+    }],
+    messageCount: {
+      type: Number,
+      default: 0,
+      min: 0
+    }
   },
   messages: [chatMessageSchema],
   sessionStatus: {

@@ -92,7 +92,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onStartLearning, onViewCou
     },
     { 
       label: 'Current Streak', 
-      value: userStats?.streakDays ? `${userStats.streakDays} days` : '0 days', 
+      value: userStats?.streakDays !== undefined ? `${userStats.streakDays} ${userStats.streakDays === 1 ? 'day' : 'days'}` : '0 days', 
       icon: Star, 
       color: 'text-orange-600' 
     }

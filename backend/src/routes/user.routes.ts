@@ -74,22 +74,133 @@ router.get('/stats', asyncHandler(async (req: AuthRequest, res) => {
     throw new AppError('User not found', 404);
   }
 
-  // Calculate real statistics from user data
+  // Import models for querying
+  const { Quiz } = await import('../models/Quiz');
+  const { ChatSession } = await import('../models/ChatSession');
+  const { Course } = await import('../models/Course');
+
+  // Get all user's quiz attempts
+  const userQuizzes = await Quiz.find({ 'attempts.userId': req.user!.id });
+  
+  let totalQuizAttempts = 0;
+  let totalScore = 0;
+  let completedQuizzes = 0;
+  
+  userQuizzes.forEach(quiz => {
+    const userAttempts = quiz.attempts.filter(attempt => 
+      attempt.userId.toString() === req.user!.id
+    );
+    
+    userAttempts.forEach(attempt => {
+      totalQuizAttempts++;
+      if (attempt.status === 'completed' && attempt.completedAt) {
+        completedQuizzes++;
+        totalScore += attempt.score.percentage || 0;
+      }
+    });
+  });
+
+  const averageScore = completedQuizzes > 0 ? totalScore / completedQuizzes : 0;
+
+  // Get user's chat sessions to calculate learning time
+  const chatSessions = await ChatSession.find({ 
+    userId: req.user!.id,
+    sessionStatus: { $in: ['active', 'completed'] }
+  });
+
+  // Calculate total study time from chat sessions (estimate based on message count and timestamps)
+  let totalStudyTime = user.totalLearningTime || 0;
+  chatSessions.forEach(session => {
+    if (session.messages.length > 1) {
+      const firstMsg = session.messages[0].timestamp;
+      const lastMsg = session.messages[session.messages.length - 1].timestamp;
+      const sessionDuration = (lastMsg.getTime() - firstMsg.getTime()) / (1000 * 60); // in minutes
+      totalStudyTime += Math.min(sessionDuration, 120); // Cap at 2 hours per session
+    }
+  });
+
+  // Get enrolled courses with progress
+  const enrolledCourses = await Course.find({ 
+    _id: { $in: user.enrolledCourses } 
+  });
+
+  // Calculate courses completed (those with all topics covered in chat sessions)
+  let coursesCompleted = 0;
+  for (const course of enrolledCourses) {
+    // Get chat sessions for this course
+    const courseSessions = await ChatSession.find({
+      userId: req.user!.id,
+      subject: course.subject,
+      sessionStatus: { $in: ['active', 'completed'] }
+    });
+
+    // Extract covered topics
+    const coveredTopics = new Set<string>();
+    courseSessions.forEach(session => {
+      if (session.currentTopic) {
+        coveredTopics.add(session.currentTopic.toLowerCase());
+      }
+      session.conceptsCovered?.forEach(c => coveredTopics.add(c.concept.toLowerCase()));
+    });
+
+    // Check if all topics are covered
+    const totalTopics = course.topics?.length || 0;
+    let completedTopicsCount = 0;
+    
+    course.topics?.forEach((topic: any) => {
+      if (coveredTopics.has(topic.title.toLowerCase())) {
+        completedTopicsCount++;
+      }
+    });
+
+    if (totalTopics > 0 && completedTopicsCount === totalTopics) {
+      coursesCompleted++;
+    }
+  }
+
+  // Calculate weekly progress
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+  const twoWeeksAgo = new Date();
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+  const thisWeekSessions = await ChatSession.countDocuments({
+    userId: req.user!.id,
+    lastActivity: { $gte: oneWeekAgo }
+  });
+
+  const lastWeekSessions = await ChatSession.countDocuments({
+    userId: req.user!.id,
+    lastActivity: { $gte: twoWeeksAgo, $lt: oneWeekAgo }
+  });
+
+  const weeklyChange = lastWeekSessions > 0 
+    ? ((thisWeekSessions - lastWeekSessions) / lastWeekSessions) * 100 
+    : 0;
+
+  // Calculate subject breakdown from chat sessions
+  const subjectBreakdown: Record<string, number> = {};
+  chatSessions.forEach(session => {
+    if (session.subject) {
+      subjectBreakdown[session.subject] = (subjectBreakdown[session.subject] || 0) + 1;
+    }
+  });
+
   const stats = {
-    totalLearningTime: user.totalLearningTime || 0, // Total minutes spent learning
+    totalStudyTime: Math.round(totalStudyTime), // Total minutes spent learning
     streakDays: user.streakDays || 0,
     achievements: user.achievements || [],
     learningLevel: user.learningPreferences?.teachingMode || 'normal',
-    coursesCompleted: 0, // This would be calculated from actual course completion data
-    quizzesTaken: 0, // This would be calculated from quiz attempts
-    averageScore: 0, // This would be calculated from quiz results
+    coursesCompleted,
+    quizzesTaken: totalQuizAttempts,
+    averageScore: Math.round(averageScore),
     weeklyProgress: {
-      thisWeek: 0, // Would be calculated from learning sessions this week
-      lastWeek: 0, // Would be calculated from learning sessions last week
-      change: 0 // Percentage change
+      thisWeek: thisWeekSessions,
+      lastWeek: lastWeekSessions,
+      change: Math.round(weeklyChange)
     },
-    subjectBreakdown: {}, // Would be calculated from actual subject progress
-    enrolledCourses: user.enrolledCourses?.length || 0,
+    subjectBreakdown,
+    enrolledCourses: enrolledCourses.length,
     preferredSubjects: user.preferredSubjects || [],
     joinedDate: user.createdAt,
     lastActive: user.lastLogin
@@ -99,7 +210,7 @@ router.get('/stats', asyncHandler(async (req: AuthRequest, res) => {
 
   const response: APIResponse = {
     success: true,
-    data: { stats },
+    data: stats,
     message: 'User statistics retrieved successfully'
   };
 
