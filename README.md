@@ -6,7 +6,7 @@
 
 **Profense** is a cutting-edge, full-stack educational platform that revolutionizes online learning through artificial intelligence. Whether you're a student looking to master new concepts, an educator seeking innovative teaching tools, or a developer interested in AI-powered education technology, Profense delivers a comprehensive, intelligent learning ecosystem.
 
-### 🎯 Core Philosophy
+### 🎯 Core Idea
 
 - **🤖 AI-First Learning**: Every interaction powered by Google's Gemini 2.5 Flash AI model
 - **🧠 Context-Aware Tutoring**: Maintains full conversation history and adapts to your learning style
@@ -1061,58 +1061,3 @@ GET    /api/analytics/progress  - Get progress metrics
 
 ---
 
-## 🎨 UI/UX Features
-
-- **Modern Design**: Clean, professional interface with Tailwind CSS
-- **Smooth Animations**: Framer Motion for delightful interactions
-- **Responsive Layout**: Works on desktop, tablet, and mobile
-- **Dark Mode Ready**: Theme system prepared for dark mode
-- **Loading States**: Skeleton screens and spinners
-- **Error Handling**: User-friendly error messages
-- **Toast Notifications**: Non-intrusive feedback
-- **Progress Indicators**: Visual progress bars and rings
-- **Icon System**: Lucide icons for consistent design
-
----
-
-## 📚 Documentation
-
-Additional documentation files in the repository:
-
-- **QUIZ_SYSTEM_COMPLETE.md**: Complete guide to quiz system features
-- **QUIZ_GENERATION_FIX.md**: Details on quiz generation improvements
-- **QUIZ_HISTORY_RESULTS_FIX.md**: Implementation of quiz history and results
-- **TIME_FEATURE_REMOVED.md**: Explanation of timer removal
-- **typescript-fixes.md**: TypeScript compilation fixes applied
-
----
-
-## 🤝 Contributing
-
-This is a personal educational project. However, suggestions and feedback are welcome!
-
----
-
-## 📄 License
-
-This project is for educational purposes.
-
----
-
-## 🙏 Acknowledgments
-
-- **Google Gemini AI**: Powering the intelligent tutoring system
-- **Model Context Protocol**: Enabling advanced AI context management
-- **React & TypeScript Communities**: Excellent documentation and support
-- **Tailwind CSS**: Making styling effortless
-- **MongoDB & Mongoose**: Flexible database solution
-
----
-
-## 📞 Support
-
-For issues, questions, or suggestions, please open an issue in the repository.
-
----
-
-**Built with ❤️ using React, TypeScript, Node.js, and Google Gemini AI**
