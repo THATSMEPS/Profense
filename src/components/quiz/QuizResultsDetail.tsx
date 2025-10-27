@@ -52,12 +52,45 @@ export const QuizResultsDetail: React.FC<QuizResultsDetailProps> = ({ quizData, 
   
   const correctCount = results.filter(r => r.isCorrect).length;
   const totalQuestions = results.length;
-  const scorePercentage = attempt.score.percentage;
+  const scorePercentage = attempt.score.percentage.toFixed(2);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  };
+
+  // Format feedback text with proper markdown-style rendering
+  const formatFeedback = (text: string) => {
+    if (!text) return null;
+    
+    // Split by paragraphs (double newlines or multiple spaces)
+    const paragraphs = text.split(/\n\n+/).filter(p => p.trim());
+    
+    return paragraphs.map((paragraph, idx) => {
+      // Remove excessive whitespace
+      let formatted = paragraph.trim().replace(/\s+/g, ' ');
+      
+      // Convert **text** to bold
+      formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong class="font-bold text-gray-900">$1</strong>');
+      
+      // Convert *text* to italic
+      formatted = formatted.replace(/\*(.+?)\*/g, '<em class="italic">$1</em>');
+      
+      // Add bullet point styling for lines starting with -
+      if (formatted.startsWith('- ')) {
+        formatted = formatted.substring(2);
+        return (
+          <li key={idx} className="ml-4 mb-2 text-gray-700 leading-relaxed">
+            <span dangerouslySetInnerHTML={{ __html: formatted }} />
+          </li>
+        );
+      }
+      
+      return (
+        <p key={idx} className="mb-3 text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: formatted }} />
+      );
+    });
   };
 
   return (
@@ -117,12 +150,14 @@ export const QuizResultsDetail: React.FC<QuizResultsDetailProps> = ({ quizData, 
         <div className="flex-1 overflow-y-auto p-6">
           {/* Overall Feedback */}
           {feedback && (
-            <Card className="mb-6 p-4 bg-blue-50 border-blue-200">
-              <h3 className="font-semibold text-gray-900 mb-2 flex items-center">
-                <Award className="w-5 h-5 mr-2 text-blue-600" />
-                Overall Feedback
+            <Card className="mb-6 p-5 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
+              <h3 className="font-semibold text-gray-900 mb-4 flex items-center text-lg">
+                <Award className="w-6 h-6 mr-2 text-blue-600" />
+                Overall Feedback & Analysis
               </h3>
-              <p className="text-gray-700">{feedback}</p>
+              <div className="prose prose-sm max-w-none">
+                {formatFeedback(feedback)}
+              </div>
             </Card>
           )}
 

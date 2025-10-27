@@ -271,16 +271,16 @@ export const QuizHistory: React.FC<QuizHistoryProps> = ({
                       <div className="text-sm text-gray-600">
                         <span className="font-medium">Best Score:</span>{' '}
                         <span className="text-2xl font-bold text-gray-900">
-                          {item.bestScore?.percentage || 0}%
+                          {(item.bestScore?.percentage || 0).toFixed(2)}%
                         </span>
                         <span className="text-gray-500 ml-1">
-                                                    ({item.bestScore?.percentage || 0}% score)
+                          ({(item.bestScore?.percentage || 0).toFixed(2)}% score)
                         </span>
                       </div>
                       <div className="text-sm text-gray-600">
                         <span className="font-medium">Average:</span>{' '}
                         <span className="font-bold">
-                                                    {Math.round(item.bestScore?.percentage || 0)}%
+                          {(item.bestScore?.percentage || 0).toFixed(2)}%
                         </span>
                       </div>
                     </div>
