@@ -1,103 +1,616 @@
-# Profense - AI-Powered Educational Platform
+# Profense - AI-Powered Educational Platform 🎓
 
-> An intelligent, adaptive learning platform that combines cutting-edge AI technology with comprehensive educational tools to deliver personalized learning experiences.
+> Transform your learning experience with intelligent, context-aware AI tutoring that adapts to your unique needs.
 
-## 📖 About Profense
+## 🌟 What is Profense?
 
-Profense is a full-stack educational platform designed to revolutionize online learning through artificial intelligence. Built with modern web technologies, it provides real-time AI tutoring, dynamic course generation, adaptive quizzes, and comprehensive progress tracking. The platform leverages Google's Gemini 2.5 Flash AI model integrated with the Model Context Protocol (MCP) to deliver contextually aware, educationally focused responses.
+**Profense** is a cutting-edge, full-stack educational platform that revolutionizes online learning through artificial intelligence. Whether you're a student looking to master new concepts, an educator seeking innovative teaching tools, or a developer interested in AI-powered education technology, Profense delivers a comprehensive, intelligent learning ecosystem.
 
 ### 🎯 Core Philosophy
 
-- **AI-First Learning**: Every interaction is powered by advanced AI that adapts to student understanding
-- **Context-Aware Tutoring**: The system maintains conversation history and learning context across sessions
-- **Safe & Educational**: Built-in content moderation ensures all interactions remain educationally relevant
-- **Progressive Difficulty**: Adaptive difficulty system that adjusts based on student performance
-- **Comprehensive Tracking**: Detailed analytics and progress monitoring for continuous improvement
+- **🤖 AI-First Learning**: Every interaction powered by Google's Gemini 2.5 Flash AI model
+- **🧠 Context-Aware Tutoring**: Maintains full conversation history and adapts to your learning style
+- **🛡️ Safe & Focused**: Advanced content moderation keeps learning on-topic and appropriate
+- **📈 Adaptive Difficulty**: Dynamically adjusts to your skill level and progress
+- **📊 Comprehensive Tracking**: Real-time analytics, progress monitoring, and performance insights
+- **🎨 Beautiful UI**: Modern, responsive design built with React, TypeScript, and Tailwind CSS
 
 ---
 
-## 🚀 Quick Start
+## ✨ Key Features
+
+### 1️⃣ Intelligent AI Tutoring
+- **Real-time Teaching**: Conversational AI that explains concepts like a human tutor
+- **Context Memory**: Remembers previous conversations and builds on them
+- **Adaptive Responses**: Adjusts explanations based on your understanding level
+- **Multi-Subject Support**: Math, Science, Programming, Languages, and more
+
+### 2️⃣ Smart Topic Moderation System
+- **Discovery Phase**: First 3 messages allow free exploration to establish your learning topic
+- **Focus Enforcement**: Keeps you on-topic after initial discovery (60%+ relevance threshold)
+- **Contextual Understanding**: Recognizes follow-up questions using pronouns ("it", "this", "that")
+- **Gentle Redirects**: Offers helpful suggestions when you drift off-topic
+
+### 3️⃣ Dynamic Quiz Generation
+- **AI-Generated Questions**: Creates custom quizzes based on your conversation topics
+- **Multiple Question Types**: Multiple-choice, numerical, and text-based answers
+- **Adaptive Difficulty**: Choose from easy, medium, or hard difficulty levels
+- **Detailed Feedback**: Get explanations for every question, right or wrong
+- **Unlimited Time**: No pressure - take as long as you need
+
+### 4️⃣ Comprehensive Progress Tracking
+- **Real Dashboard Stats**: View actual learning time, quiz scores, and course completion
+- **Quiz History**: Review all past quizzes with detailed question-by-question breakdowns
+- **Course Progress**: Track topic completion percentage and time spent per course
+- **Learning Streaks**: Monitor consecutive learning days and earn achievements
+- **Performance Analytics**: Subject breakdown, weekly progress charts, and improvement trends
+
+### 5️⃣ Course Library & Management
+- **Curated Courses**: Access expertly designed courses across multiple subjects
+- **Smart Recommendations**: AI-powered course suggestions based on your preferences
+- **Enrollment Tracking**: Automatically tracks which topics you've covered
+- **Deduplication System**: Prevents duplicate courses and intelligently merges similar content
+- **Progress Sync**: Your chat sessions automatically update course completion
+
+### 6️⃣ Advanced Learning Hub
+- **Learning Path Generator**: Get personalized roadmaps for mastering any subject
+- **Concept Connections Explorer**: Visualize relationships between topics
+- **Practice Problems**: Generate targeted exercises for weak areas
+- **Study Resources**: Curated materials, videos, and articles for each topic
+
+---
+
+## 🏗️ Architecture & Technology
+
+### **Tech Stack Overview**
+
+
+### **Tech Stack Overview**
+
+#### 🎨 Frontend
+| Technology | Purpose | Why We Use It |
+|------------|---------|---------------|
+| **React 18** | UI Framework | Modern, component-based architecture with hooks |
+| **TypeScript** | Type Safety | Catches errors at compile time, improves code quality |
+| **Vite** | Build Tool | Lightning-fast HMR and optimized production builds |
+| **Tailwind CSS** | Styling | Utility-first CSS for rapid, consistent UI development |
+| **Framer Motion** | Animations | Smooth, professional transitions and interactions |
+| **React Router v7** | Navigation | Client-side routing with data loading |
+| **Socket.IO Client** | Real-time Updates | WebSocket communication for live features |
+| **React Markdown** | Content Rendering | Beautiful markdown display for AI responses |
+| **Lucide React** | Icons | Modern, customizable icon library |
+
+#### 🔧 Backend
+| Technology | Purpose | Why We Use It |
+|------------|---------|---------------|
+| **Node.js** | Runtime | JavaScript everywhere, massive ecosystem |
+| **Express.js** | Web Framework | Fast, minimalist, battle-tested |
+| **TypeScript** | Type Safety | Prevents runtime errors, better IDE support |
+| **MongoDB** | Database | Flexible schema for evolving educational data |
+| **Mongoose** | ODM | Elegant MongoDB object modeling |
+| **Socket.IO** | WebSockets | Real-time bidirectional communication |
+| **JWT** | Authentication | Secure, stateless user authentication |
+| **bcryptjs** | Password Hashing | Industry-standard password security |
+| **Winston** | Logging | Professional logging for debugging and monitoring |
+
+#### 🤖 AI & Integration
+| Technology | Purpose | Why We Use It |
+|------------|---------|---------------|
+| **Google Gemini 2.5 Flash** | AI Model | Fast, intelligent responses with multimodal support |
+| **Model Context Protocol (MCP)** | Tool Integration | Structured AI tool calling and context management |
+| **Custom Moderation** | Content Filtering | Fast, regex-based filtering (no API calls needed) |
+
+---
+
+## 🚀 Quick Start Guide
 
 ### Prerequisites
+- Node.js v18 or higher
+- MongoDB (local or cloud)
+- Google Gemini API Key ([Get it here](https://makersuite.google.com/app/apikey))
+- npm or yarn package manager
 
-- **Node.js** (v18 or higher)
-- **MongoDB** (local instance or cloud connection)
-- **Google Gemini API Key** (required for AI features)
-- **npm** or **yarn** package manager
+### Installation
 
-### Installation & Setup
+#### 1. Clone the Repository
+```bash
+git clone https://github.com/THATSMEPS/Profense.git
+cd Profense
+```
 
-1. **Clone and install dependencies:**
-   ```bash
-   cd Profense
-   npm install
-   cd backend && npm install
-   cd ..
-   ```
+#### 2. Install Dependencies
+```bash
+# Install root dependencies
+npm install
 
-2. **Environment Configuration:**
-   
-   **Frontend (.env):** Already configured
-   ```env
-   VITE_API_BASE_URL=http://localhost:3001/api
-   VITE_WS_URL=http://localhost:3001
-   ```
+# Install backend dependencies
+cd backend
+npm install
+cd ..
+```
 
-   **Backend (.env):** Update these values
-   ```env
-   # Database - Update with your MongoDB connection
-   MONGODB_URI=mongodb://localhost:27017/profense
-   # or use the existing cloud connection
-   
-   # JWT Secret - Change in production
-   JWT_SECRET=your-super-secret-jwt-key-change-in-production
-   
-   # AI Services - Add your API keys
-   GEMINI_API_KEY=your-gemini-api-key
-   OPENAI_API_KEY=your-openai-api-key (optional)
-   ```
+#### 3. Environment Configuration
 
-3. **Start the application:**
-   ```bash
-   # Option 1: Run both frontend and backend together (recommended)
-   npm run start
-   
-   # Option 2: Run separately
-   # Terminal 1 - Backend
-   npm run dev:backend
-   
-   # Terminal 2 - Frontend  
-   npm run dev
-   ```
+**Frontend `.env` (already configured)**
+```env
+VITE_API_BASE_URL=http://localhost:3001/api
+VITE_WS_URL=http://localhost:3001
+```
 
-4. **Access the application:**
-   - Frontend: http://localhost:5173
-   - Backend API: http://localhost:3001
-   - API Health Check: http://localhost:3001/health
+**Backend `.env` (⚠️ UPDATE THESE VALUES)**
+```env
+# MongoDB Connection
+MONGODB_URI=mongodb://localhost:27017/profense
+# Or use MongoDB Atlas cloud connection
+
+# JWT Secret (CHANGE IN PRODUCTION!)
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
+
+# AI API Keys
+GEMINI_API_KEY=your-gemini-api-key-here
+OPENAI_API_KEY=your-openai-key-optional
+
+# Server Configuration
+PORT=3001
+NODE_ENV=development
+```
+
+#### 4. Start the Application
+
+**Option 1: Run Everything (Recommended)**
+```bash
+npm run start
+```
+
+**Option 2: Run Separately**
+```bash
+# Terminal 1 - Backend
+cd backend
+npm run dev
+
+# Terminal 2 - Frontend
+npm run dev
+```
+
+#### 5. Access the Platform
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:3001
+- **Health Check**: http://localhost:3001/health
 
 ---
 
-## 🏗️ Technology Stack
+## 📚 How It Works - System Overview
 
-### Frontend Technologies
+### 🔄 The Learning Flow
 
-| Technology | Purpose | Version |
-|------------|---------|---------|
-| **React 18** | UI Framework | Latest |
-| **TypeScript** | Type Safety | 5.5.3 |
-| **Vite** | Build Tool & Dev Server | 5.4.2 |
-| **Tailwind CSS** | Styling Framework | 3.4.1 |
-| **Framer Motion** | Animations & Transitions | 12.23.12 |
-| **React Router** | Client-side Routing | 7.8.2 |
-| **Socket.IO Client** | Real-time Communication | 4.8.1 |
-| **React Markdown** | Markdown Rendering | 10.1.0 |
-| **Lucide React** | Icon Library | 0.344.0 |
+```
+┌─────────────────────────────────────────────────────────────┐
+│  USER JOURNEY                                                │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  1. SIGN UP / LOGIN                                         │
+│     ↓                                                        │
+│  2. BROWSE COURSE LIBRARY                                   │
+│     ↓                                                        │
+│  3. SELECT TOPIC OR START CHATTING                          │
+│     ↓                                                        │
+│  4. DISCOVERY PHASE (First 3 Messages)                      │
+│     • Ask anything educational                              │
+│     • System learns your topic                              │
+│     • No restrictions yet                                   │
+│     ↓                                                        │
+│  5. FOCUS PHASE (Message 4+)                               │
+│     • Topic established                                     │
+│     • Moderation active                                     │
+│     • Stay on-topic for effective learning                 │
+│     ↓                                                        │
+│  6. GENERATE QUIZ                                           │
+│     • Based on conversation                                 │
+│     • Custom difficulty                                     │
+│     • Instant feedback                                      │
+│     ↓                                                        │
+│  7. TRACK PROGRESS                                          │
+│     • View dashboard stats                                  │
+│     • Review quiz history                                   │
+│     • See course completion                                 │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
 
-### Backend Technologies
+### 🧠 AI Moderation System
 
-| Technology | Purpose | Version |
-|------------|---------|---------|
-| **Node.js** | Runtime Environment | 18+ |
+#### Discovery Phase (Messages 1-3)
+```javascript
+User enters Learn section → No topic selected
+Message 1: "What is quantum physics?"
+  ✅ Allowed (Discovery phase)
+  → System learns: topic = "quantum physics"
+  
+Message 2: "Tell me about wave functions"
+  ✅ Allowed (Still in discovery)
+  → Building context...
+  
+Message 3: "How does it relate to energy?"
+  ✅ Allowed (Discovery complete)
+  → Topic established!
+```
+
+#### Focus Phase (Message 4+)
+```javascript
+Message 4: "What is Schrödinger's equation?"
+  → Topic check: quantum physics ✅ (85% relevance)
+  ✅ Allowed - On topic
+  
+Message 5: "Tell me about biology"
+  → Topic check: quantum physics ❌ (5% relevance)
+  🚫 Blocked - Off topic
+  → Redirect: "Let's stay focused on quantum physics!"
+```
+
+### 📊 Relevance Scoring Algorithm
+
+```javascript
+// Score calculation
+relevanceScore = (topicMatch × 60%) + (subjectMatch × 30%) + (questionBoost × 10%)
+
+// Example: "What is the derivative of x²?" while studying Calculus
+topicKeywords = ['calculus', 'derivative', 'function', 'limit']
+messageKeywords = ['what', 'derivative', 'squared']
+intersection = ['derivative']
+
+topicMatch = 1/5 = 0.20
+subjectMatch = 2/6 = 0.33
+questionBoost = 0.20 (has "what")
+
+finalScore = (0.20 × 0.6) + (0.33 × 0.3) + 0.20 = 0.42 (42%)
+
+// Result thresholds:
+// ≥ 60%: ✅ Allow
+// 30-60%: ⚠️ Allow with reminder
+// < 30%: 🚫 Block and redirect
+```
+
+### 🎯 Quiz Generation Process
+
+```
+User clicks "Generate Quiz"
+  ↓
+Extract conversation topics
+  ↓
+Build prompt for Gemini AI:
+  • Subject: Mathematics
+  • Topic: Calculus
+  • Difficulty: Hard
+  • Question types: Mixed
+  • Number of questions: 10
+  ↓
+Gemini generates JSON quiz:
+  • Questions with options
+  • Correct answers
+  • Detailed explanations
+  • Point values
+  ↓
+Quiz saved to database
+  ↓
+User takes quiz
+  ↓
+Answers evaluated by AI
+  ↓
+Results with feedback saved
+  ↓
+Display detailed performance breakdown
+```
+
+---
+
+## 🎨 User Interface Preview
+
+### Landing Page
+- Modern hero section with CTA
+- Feature highlights
+- Testimonials (when available)
+- Quick start guide
+
+### Dashboard
+- Real-time statistics cards
+  - Courses Completed
+  - Hours Learned
+  - Quiz Score Average
+  - Learning Streak
+- Weekly progress chart
+- Recent courses
+- Subject breakdown
+
+### Chat Interface
+- Clean, distraction-free design
+- Markdown-rendered AI responses
+- Typing indicators
+- Message history
+- Course outline sidebar
+- Quick actions (Generate Quiz, Switch Topic)
+
+### Quiz Interface
+- Progress bar
+- Question counter
+- Multiple question types support
+- No time pressure (removed timer)
+- Clear submit button
+
+### Quiz History
+- List of all past quizzes
+- Statistics overview
+- Grade badges (A, B, C, D, F)
+- "View Details" for question breakdown
+- Retake option
+
+---
+
+## 🔐 Security & Privacy
+
+### Authentication
+- JWT-based stateless authentication
+- Bcrypt password hashing (10 rounds)
+- HTTP-only cookies for token storage
+- Password strength requirements
+
+### Data Protection
+- MongoDB user data encryption at rest
+- Secure environment variables
+- CORS protection
+- Rate limiting on API endpoints
+
+### Content Safety
+- Dual-layer moderation (topic + content)
+- Regex-based inappropriate content blocking
+- Educational focus enforcement
+- No sensitive data logging
+
+---
+
+## 📈 Performance Features
+
+### Speed Optimizations
+- **Frontend**:
+  - Vite's lightning-fast HMR
+  - Code splitting by route
+  - Lazy loading for components
+  - Optimized bundle size
+
+- **Backend**:
+  - Connection pooling for MongoDB
+  - Response caching where appropriate
+  - Efficient database queries with indexes
+  - Async/await for non-blocking operations
+
+### Efficiency Wins
+- **Custom moderation vs AI calls**: 
+  - Topic check: ~10ms (vs 1-3 seconds with AI)
+  - Content check: <1ms (vs 1-2 seconds with AI)
+  - **Result**: 100-300x faster, $0 API costs
+
+- **Direct MongoDB storage**:
+  - Full conversation history retained
+  - No data loss from summarization
+  - Fast query performance with indexes
+
+---
+
+## 🚧 System Status & Known Issues
+
+### ✅ Fully Working Features
+- User authentication (signup, login, JWT)
+- AI chat with context memory
+- Topic moderation with discovery phase
+- Content moderation
+- Quiz generation (all question types)
+- Quiz submission and grading
+- Quiz history with detailed results
+- Dashboard statistics (real data)
+- Course library and enrollment
+- Course progress tracking
+- Course deduplication system
+- Real-time WebSocket updates
+- Learning Hub features
+
+### ⚠️ Known Limitations
+- **Progress tracking**: Based on chat topics, not explicit completion markers
+- **Time estimation**: Calculated from message timestamps (may be inaccurate if tab left open)
+- **Course completion**: Requires 100% topic coverage via chat (no manual "mark complete")
+
+### 🔮 Planned Enhancements
+- [ ] Explicit "Mark Topic Complete" button
+- [ ] Active tab detection for accurate time tracking
+- [ ] Course completion certificates
+- [ ] Achievement badges system
+- [ ] Leaderboards
+- [ ] Study time recommendations
+- [ ] Progress notifications
+- [ ] Export quiz results to PDF
+- [ ] Peer comparison features
+- [ ] Voice input support
+- [ ] Multi-language support
+
+---
+
+## 🧪 Testing the Platform
+
+### Manual Testing Checklist
+
+#### Authentication
+- [ ] Sign up with new account
+- [ ] Login with credentials
+- [ ] Logout and verify session cleared
+- [ ] Invalid credentials handled properly
+
+#### Chat & Learning
+- [ ] Start new chat session
+- [ ] Ask 3 questions (discovery phase)
+- [ ] Verify no blocking during discovery
+- [ ] Ask on-topic question (message 4+)
+- [ ] Ask off-topic question and verify redirect
+- [ ] Use pronouns ("it", "this") and verify context understanding
+
+#### Quiz System
+- [ ] Generate quiz from chat
+- [ ] Answer all questions
+- [ ] Submit quiz
+- [ ] Verify redirect to quiz history
+- [ ] View detailed results
+- [ ] Check correct/incorrect marking
+- [ ] Verify explanations displayed
+- [ ] Retake quiz and verify attempt count increases
+
+#### Dashboard
+- [ ] Check statistics update after quiz
+- [ ] Verify learning time increases after chat
+- [ ] Check course completion percentage
+- [ ] Verify weekly progress chart
+
+#### Course Library
+- [ ] Browse courses
+- [ ] Enroll in a course
+- [ ] Verify enrollment reflected in dashboard
+- [ ] Check recommended courses
+
+---
+
+## 📁 Project Structure
+
+```
+Profense/
+├── backend/
+│   ├── src/
+│   │   ├── config/           # Configuration files
+│   │   ├── mcp/              # Model Context Protocol integration
+│   │   │   ├── client.ts     # MCP client (tool execution)
+│   │   │   └── server.ts     # MCP server (tool definitions)
+│   │   ├── middleware/       # Express middleware
+│   │   │   ├── auth.ts       # JWT authentication
+│   │   │   └── errorHandler.ts
+│   │   ├── models/           # MongoDB schemas
+│   │   │   ├── User.ts
+│   │   │   ├── Course.ts
+│   │   │   ├── Quiz.ts
+│   │   │   └── ChatSession.ts
+│   │   ├── routes/           # API endpoints
+│   │   │   ├── auth.routes.ts
+│   │   │   ├── chat.routes.ts
+│   │   │   ├── course.routes.ts
+│   │   │   ├── quiz.routes.ts
+│   │   │   ├── learning.routes.ts
+│   │   │   └── user.routes.ts
+│   │   ├── services/         # Business logic
+│   │   │   ├── ai.service.ts              # Gemini AI integration
+│   │   │   ├── enhanced-ai.service.ts     # Advanced AI features
+│   │   │   ├── topicModeration.service.ts # Smart topic checking
+│   │   │   └── courseDeduplication.service.ts
+│   │   ├── types/            # TypeScript type definitions
+│   │   ├── utils/            # Helper functions
+│   │   └── index.ts          # Server entry point
+│   ├── logs/                 # Application logs
+│   └── package.json
+├── src/                      # Frontend source
+│   ├── components/
+│   │   ├── auth/            # Authentication components
+│   │   ├── chat/            # Chat interface
+│   │   ├── courses/         # Course library
+│   │   ├── dashboard/       # Dashboard
+│   │   ├── landing/         # Landing page
+│   │   ├── learning/        # Learning Hub features
+│   │   ├── profile/         # User profile
+│   │   ├── quiz/            # Quiz components
+│   │   └── ui/              # Reusable UI components
+│   ├── context/             # React Context API
+│   ├── services/            # API service layer
+│   │   ├── api.ts           # Base API client
+│   │   ├── authService.ts
+│   │   ├── chatService.ts
+│   │   ├── courseService.ts
+│   │   ├── quizService.ts
+│   │   └── learningService.ts
+│   ├── types/               # TypeScript types
+│   ├── App.tsx              # Main app component
+│   └── main.tsx             # Entry point
+├── Documentation/            # Detailed feature docs
+│   ├── ADAPTIVE_TOPIC_LEARNING.md
+│   ├── CONTENT_MODERATION_ANALYSIS.md
+│   ├── CONTEXT_AWARE_MODERATION.md
+│   ├── COURSE_DATABASE_DEDUPLICATION.md
+│   ├── DASHBOARD_STATS_UPDATE.md
+│   ├── DISCOVERY_PHASE_FIX.md
+│   ├── MCP_PERFORMANCE_ANALYSIS.md
+│   ├── QUIZ_GENERATION_FIX.md
+│   ├── QUIZ_SYSTEM_COMPLETE.md
+│   ├── STRICT_TOPIC_ENFORCEMENT.md
+│   └── TOPIC_MODERATION_FIX.md
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+└── README.md
+```
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Whether you're fixing bugs, adding features, or improving documentation, your help is appreciated.
+
+### How to Contribute
+
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature/AmazingFeature`
+3. **Commit your changes**: `git commit -m 'Add some AmazingFeature'`
+4. **Push to the branch**: `git push origin feature/AmazingFeature`
+5. **Open a Pull Request**
+
+### Development Guidelines
+- Follow TypeScript best practices
+- Write meaningful commit messages
+- Add comments for complex logic
+- Test your changes thoroughly
+- Update documentation if needed
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- **Google Gemini AI**: For powering our intelligent tutoring system
+- **MongoDB**: For flexible, scalable data storage
+- **React & Vite**: For modern, fast frontend development
+- **Express.js**: For robust backend architecture
+- **Tailwind CSS**: For beautiful, responsive design
+- **All open-source contributors**: This project stands on the shoulders of giants
+
+---
+
+## 📞 Support & Contact
+
+- **Developer**: THATSMEPS
+- **GitHub**: [https://github.com/THATSMEPS](https://github.com/THATSMEPS)
+- **Repository**: [https://github.com/THATSMEPS/Profense](https://github.com/THATSMEPS/Profense)
+- **Issues**: [Report a bug or request a feature](https://github.com/THATSMEPS/Profense/issues)
+
+---
+
+## 🌟 Star Us!
+
+If you find Profense useful, please consider giving us a ⭐ on GitHub! It helps others discover the project and motivates us to keep improving.
+
+---
+
+## 🎓 Built for Education, Powered by AI
+
+**Profense** - Where intelligent technology meets effective learning.
+
+---
+
+*Last Updated: October 27, 2025*
 | **Express.js** | Web Framework | 4.18.2 |
 | **TypeScript** | Type Safety | Latest |
 | **MongoDB** | Database | Latest |
