@@ -94,57 +94,71 @@ export const QuizHistory: React.FC<QuizHistoryProps> = ({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-2 text-gray-600">Loading quiz history...</span>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex flex-col items-center justify-center p-12">
+          <div className="relative mb-6">
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-transparent border-t-blue-600 border-r-blue-400"></div>
+            <div className="absolute inset-0 animate-spin rounded-full h-16 w-16 border-4 border-transparent border-b-indigo-600 border-l-indigo-400" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
+          </div>
+          <span className="text-lg font-medium text-gray-700">Loading quiz history...</span>
+          <div className="flex items-center space-x-1 mt-3">
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <Card className="p-6">
-        <div className="text-center">
-          <div className="text-red-600 mb-4">
-            <svg className="w-12 h-12 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.962-.833-2.732 0L4.082 15.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Card className="p-6">
+          <div className="text-center">
+            <div className="text-red-600 mb-4">
+              <svg className="w-12 h-12 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.962-.833-2.732 0L4.082 15.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <Button onClick={loadQuizHistory} variant="outline">
+              Try Again
+            </Button>
           </div>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <Button onClick={loadQuizHistory} variant="outline">
-            Try Again
-          </Button>
-        </div>
-      </Card>
+        </Card>
+      </div>
     );
   }
 
   if (quizHistory.length === 0) {
     return (
-      <Card className="p-8">
-        <div className="text-center">
-          <div className="text-gray-400 mb-4">
-            <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Card className="p-8">
+          <div className="text-center">
+            <div className="text-gray-400 mb-4">
+              <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">No Quiz History</h3>
+            <p className="text-gray-500 mb-4">You haven't taken any quizzes yet. Start learning to build your history!</p>
+            {onStartQuiz && (
+              <Button 
+                onClick={() => onStartQuiz('Mathematics', 'intermediate')}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Start Your First Quiz
+              </Button>
+            )}
           </div>
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">No Quiz History</h3>
-          <p className="text-gray-500 mb-4">You haven't taken any quizzes yet. Start learning to build your history!</p>
-          {onStartQuiz && (
-            <Button 
-              onClick={() => onStartQuiz('Mathematics', 'intermediate')}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              Start Your First Quiz
-            </Button>
-          )}
-        </div>
-      </Card>
+        </Card>
+      </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Results Detail Modal */}
       <AnimatePresence>
         {selectedAttempt && (

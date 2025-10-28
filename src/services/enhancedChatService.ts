@@ -40,7 +40,7 @@ export interface SendMessageRequest {
   difficulty?: string;
   type?: 'text' | 'code' | 'equation' | 'image';
   isGreeting?: boolean;
-  learningMode?: 'teaching' | 'chat';
+  learningMode?: 'teaching' | 'chat' | 'practice' | 'review';
 }
 
 export interface ModerationAlert {

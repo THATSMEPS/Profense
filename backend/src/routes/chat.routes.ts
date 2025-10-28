@@ -6,6 +6,7 @@ import { getEnhancedAIService } from '../services/enhanced-ai.service';
 import { getTopicModerationService } from '../services/topicModeration.service';
 import { mcpClient } from '../mcp/client';
 import { ChatSession } from '../models/ChatSession';
+import { User } from '../models/User';
 import { logger } from '../utils/logger';
 
 const router = express.Router();
@@ -188,6 +189,12 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
 
   try {
     let chatSession;
+    
+    // Update user activity and streak
+    const user = await User.findById(req.user!.id);
+    if (user) {
+      await user.updateActivity();
+    }
     
     // Find or create session
     if (sessionId) {

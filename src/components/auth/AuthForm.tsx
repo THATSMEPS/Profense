@@ -180,8 +180,11 @@ export const AuthForm: React.FC<AuthFormProps> = ({
                 disabled={!isFormValid() || isSubmitting || loading}
               >
                 {isSubmitting || loading ? (
-                  <span className="flex items-center">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  <span className="flex items-center justify-center">
+                    <div className="relative w-5 h-5 mr-2">
+                      <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-white border-r-white/50"></div>
+                      <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-b-white border-l-white/50" style={{ animationDirection: 'reverse', animationDuration: '1s' }}></div>
+                    </div>
                     {isSignUp ? 'Creating Account...' : 'Signing In...'}
                   </span>
                 ) : (

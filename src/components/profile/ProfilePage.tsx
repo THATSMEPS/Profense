@@ -58,12 +58,16 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onLogout }) => {
   if (loading) {
     return (
       <div className="p-8 max-w-4xl mx-auto">
-        <div className="animate-pulse space-y-6">
-          <div className="h-32 bg-gray-200 rounded-lg"></div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-24 bg-gray-200 rounded-lg"></div>
-            ))}
+        <div className="flex flex-col items-center justify-center py-12">
+          <div className="relative mb-6">
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-transparent border-t-blue-600 border-r-blue-400"></div>
+            <div className="absolute inset-0 animate-spin rounded-full h-16 w-16 border-4 border-transparent border-b-indigo-600 border-l-indigo-400" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
+          </div>
+          <span className="text-lg font-medium text-gray-700">Loading profile...</span>
+          <div className="flex items-center space-x-1 mt-3">
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
           </div>
         </div>
       </div>

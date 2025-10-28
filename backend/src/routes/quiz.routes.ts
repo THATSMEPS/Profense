@@ -7,6 +7,7 @@ import { mcpClient } from '../mcp/client';
 import { logger } from '../utils/logger';
 import { Quiz } from '../models/Quiz';
 import { ChatSession } from '../models/ChatSession';
+import { User } from '../models/User';
 import { Document } from 'mongoose';
 
 const router = express.Router();
@@ -184,6 +185,12 @@ router.post('/:quizId/submit', asyncHandler(async (req: AuthRequest, res) => {
   }
   
   try {
+    // Update user activity and streak
+    const user = await User.findById(req.user!.id);
+    if (user) {
+      await user.updateActivity();
+    }
+    
     const quiz = await Quiz.findById(quizId);
     
     if (!quiz) {

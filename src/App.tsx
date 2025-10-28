@@ -18,12 +18,26 @@ type Page = 'landing' | 'auth' | 'dashboard' | 'chat' | 'quiz' | 'quiz-history' 
 
 // Loading component
 const LoadingSpinner: React.FC = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gray-50">
+ 
     <div className="text-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-      <p className="text-gray-600">Loading Profense...</p>
+      <div className="relative w-20 h-20 mx-auto mb-8">
+        {/* Outer spinning ring */}
+        <div className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-blue-600 border-r-blue-400"></div>
+        {/* Inner spinning ring */}
+        <div className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-b-indigo-600 border-l-indigo-400" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
+        {/* Center dot */}
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full animate-pulse"></div>
+      </div>
+      <div>
+        <h3 className="text-xl font-semibold text-gray-800 mb-2">Loading Profense</h3>
+        <div className="flex items-center justify-center space-x-1">
+          <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+          <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+          <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+        </div>
+      </div>
     </div>
-  </div>
+
 );
 
 // Error component
@@ -265,7 +279,7 @@ const AppContent: React.FC = () => {
           />
         );
       case 'chat':
-        return <ChatInterface onGenerateQuiz={handleStartQuiz} />;
+        return <ChatInterface onGenerateQuiz={handleStartQuiz} onBack={() => setCurrentPage('dashboard')} />;
       case 'quiz':
         return currentQuiz ? (
           <QuizInterface
@@ -295,7 +309,7 @@ const AppContent: React.FC = () => {
       case 'profile':
         return <ProfilePage onLogout={handleLogout} />;
       case 'learning':
-        return <LearningHub />;
+        return <LearningHub onBack={() => setCurrentPage('dashboard')} />;
       default:
         return (
           <Dashboard 

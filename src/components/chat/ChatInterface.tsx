@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, MicOff, MessageSquare, Brain, Menu, X } from 'lucide-react';
+import { Send, Mic, MicOff, MessageSquare, Brain, Menu, X, ArrowLeft } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useApp } from '../../context/AppContext';
 import { ChatMessage } from '../../types';
@@ -12,9 +12,10 @@ import { userService } from '../../services/userService';
 
 interface ChatInterfaceProps {
   onGenerateQuiz?: (subject?: string, difficulty?: string, topic?: string, chatContext?: string) => void;
+  onBack?: () => void;
 }
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) => {
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz, onBack }) => {
   const { 
     chatMessages, 
     addChatMessage, 
@@ -193,28 +194,40 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Course Outline Sidebar */}
-      <AnimatePresence>
-        {sidebarOpen && currentCourse && (
-          <motion.div
-            initial={{ x: -320 }}
-            animate={{ x: 0 }}
-            exit={{ x: -320 }}
-            transition={{ duration: 0.3 }}
-            className="w-80 bg-white border-r border-gray-200 flex-shrink-0"
-          >
-            <CourseOutline course={currentCourse} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="bg-gray-50 min-h-screen">
+      <div className="max-w-7xl mx-auto h-screen flex">
+        {/* Course Outline Sidebar */}
+        <AnimatePresence>
+          {sidebarOpen && currentCourse && (
+            <motion.div
+              initial={{ x: -320 }}
+              animate={{ x: 0 }}
+              exit={{ x: -320 }}
+              transition={{ duration: 0.3 }}
+              className="w-80 bg-white border-r border-gray-200 flex-shrink-0"
+            >
+              <CourseOutline course={currentCourse} />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
+        {/* Main Chat Area */}
+        <div className="flex-1 flex flex-col min-w-0">
         {/* Chat Header */}
         <div className="bg-white border-b border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
+              {onBack && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onBack}
+                  icon={ArrowLeft}
+                  className="mr-2"
+                >
+                  Back
+                </Button>
+              )}
               {currentCourse && (
                 <Button
                   variant="ghost"
@@ -452,6 +465,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz }) 
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 };

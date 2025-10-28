@@ -57,6 +57,13 @@ const userSchema = new Schema<IUser>({
     default: 0,
     min: [0, 'Streak days cannot be negative']
   },
+  lastActivityDate: {
+    type: Date,
+    default: null
+  },
+  activityDates: [{
+    type: Date
+  }],
   totalLearningTime: {
     type: Number,
     default: 0,
@@ -119,6 +126,83 @@ userSchema.methods.comparePassword = async function(candidatePassword: string): 
 userSchema.methods.updateLastLogin = function() {
   this.lastLogin = new Date();
   return this.save({ validateBeforeSave: false });
+};
+
+// Update activity and calculate streak
+userSchema.methods.updateActivity = async function() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Normalize to start of day
+  
+  const lastActivity = this.lastActivityDate ? new Date(this.lastActivityDate) : null;
+  if (lastActivity) {
+    lastActivity.setHours(0, 0, 0, 0);
+  }
+  
+  // Check if user was active today
+  const todayTimestamp = today.getTime();
+  const alreadyActiveToday = this.activityDates.some((date: Date) => {
+    const activityDate = new Date(date);
+    activityDate.setHours(0, 0, 0, 0);
+    return activityDate.getTime() === todayTimestamp;
+  });
+  
+  if (!alreadyActiveToday) {
+    // Add today to activity dates
+    this.activityDates.push(today);
+    
+    // Calculate streak
+    if (!lastActivity) {
+      // First activity
+      this.streakDays = 1;
+    } else {
+      const daysDifference = Math.floor((todayTimestamp - lastActivity.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysDifference === 1) {
+        // Consecutive day - increment streak
+        this.streakDays += 1;
+      } else if (daysDifference > 1) {
+        // Streak broken - reset to 1
+        this.streakDays = 1;
+      }
+      // If daysDifference === 0, it means same day (shouldn't happen due to check above)
+    }
+    
+    this.lastActivityDate = today;
+    
+    // Keep only last 365 days of activity for performance
+    if (this.activityDates.length > 365) {
+      const oneYearAgo = new Date(today);
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      this.activityDates = this.activityDates.filter((date: Date) => 
+        new Date(date) >= oneYearAgo
+      );
+    }
+    
+    await this.save({ validateBeforeSave: false });
+  }
+  
+  return this.streakDays;
+};
+
+// Check and reset streak if broken
+userSchema.methods.checkStreak = async function() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const lastActivity = this.lastActivityDate ? new Date(this.lastActivityDate) : null;
+  if (lastActivity) {
+    lastActivity.setHours(0, 0, 0, 0);
+    
+    const daysDifference = Math.floor((today.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysDifference > 1) {
+      // Streak broken - reset to 0
+      this.streakDays = 0;
+      await this.save({ validateBeforeSave: false });
+    }
+  }
+  
+  return this.streakDays;
 };
 
 // Get full name (if needed)

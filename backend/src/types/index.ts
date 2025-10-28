@@ -16,6 +16,8 @@ export interface IUser extends Document {
     learningPace: 'slow' | 'normal' | 'fast';
   };
   streakDays: number;
+  lastActivityDate?: Date;
+  activityDates: Date[];
   totalLearningTime: number;
   achievements: string[];
   enrolledCourses: Types.ObjectId[];
@@ -31,6 +33,8 @@ export interface IUser extends Document {
   // Methods
   comparePassword(candidatePassword: string): Promise<boolean>;
   updateLastLogin(): Promise<any>;
+  updateActivity(): Promise<number>;
+  checkStreak(): Promise<number>;
 }
 
 // Course Types

@@ -74,6 +74,10 @@ router.get('/stats', asyncHandler(async (req: AuthRequest, res) => {
     throw new AppError('User not found', 404);
   }
 
+  // Check and update streak
+  await user.checkStreak();
+  await user.updateActivity();
+
   // Import models for querying
   const { Quiz } = await import('../models/Quiz');
   const { ChatSession } = await import('../models/ChatSession');

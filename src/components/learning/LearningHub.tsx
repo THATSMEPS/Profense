@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { LearningPathGenerator, PracticeProblems, ConceptConnectionsExplorer } from './';
 import { Card } from '../ui/Card';
 
 type LearningTab = 'path' | 'practice' | 'connections';
 
-export const LearningHub: React.FC = () => {
+interface LearningHubProps {
+  onBack?: () => void;
+}
+
+export const LearningHub: React.FC<LearningHubProps> = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState<LearningTab>('path');
 
   const tabs = [
@@ -15,12 +20,28 @@ export const LearningHub: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="text-center mb-8">
-        <h1 className="text-4xl font-bold text-gray-900 mb-2">AI Learning Hub</h1>
-        <p className="text-lg text-gray-600">
-          Powered by advanced AI to personalize your learning journey
-        </p>
+      {/* Header with Back Button */}
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex-1">
+          <div className="flex items-center space-x-4">
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="flex items-center space-x-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors duration-200"
+                aria-label="Go back to dashboard"
+              >
+                <ArrowLeft className="w-5 h-5" />
+                <span className="font-medium">Back</span>
+              </button>
+            )}
+            <div>
+              <h1 className="text-4xl font-bold text-gray-900 mb-2">AI Learning Hub</h1>
+              <p className="text-lg text-gray-600">
+                Powered by advanced AI to personalize your learning journey
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Tab Navigation */}
