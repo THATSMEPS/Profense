@@ -346,6 +346,12 @@ const quizSchema = new Schema<IQuiz>({
     generatedAt: {
       type: Date,
       default: Date.now
+    },
+    courseId: {
+      type: String
+    },
+    topicId: {
+      type: String
     }
   },
   attempts: [quizAttemptSchema],

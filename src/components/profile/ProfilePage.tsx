@@ -1,20 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Edit2, Trophy, Clock, TrendingUp, Star, Award } from 'lucide-react';
+import { User, Edit2, Trophy, Clock, TrendingUp, Star, Award, BookOpen, Target, Calendar } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { useApp } from '../../context/AppContext';
 import { userService, UserProfile } from '../../services/userService';
+import { learningService, PracticeSession } from '../../services/learningService';
 
 interface ProfilePageProps {
   onLogout?: () => void;
 }
+
+type TabType = 'overview' | 'practice-history';
 
 export const ProfilePage: React.FC<ProfilePageProps> = ({ onLogout }) => {
   const { user, setUser, setError } = useApp();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [practiceHistory, setPracticeHistory] = useState<PracticeSession[]>([]);
+  const [practiceLoading, setPracticeLoading] = useState(false);
   const [editData, setEditData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -24,6 +30,25 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onLogout }) => {
   useEffect(() => {
     loadUserProfile();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'practice-history') {
+      loadPracticeHistory();
+    }
+  }, [activeTab]);
+
+  const loadPracticeHistory = async () => {
+    try {
+      setPracticeLoading(true);
+      const history = await learningService.getPracticeHistory();
+      setPracticeHistory(history);
+    } catch (error) {
+      console.error('Failed to load practice history:', error);
+      setError('Failed to load practice history');
+    } finally {
+      setPracticeLoading(false);
+    }
+  };
 
   const loadUserProfile = async () => {
     try {
@@ -210,6 +235,36 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onLogout }) => {
         ))}
       </motion.div>
 
+      {/* Tabs */}
+      <div className="mb-6">
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'overview'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Overview
+            </button>
+            <button
+              onClick={() => setActiveTab('practice-history')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'practice-history'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Practice History
+            </button>
+          </nav>
+        </div>
+      </div>
+
+      {/* Overview Tab */}
+      {activeTab === 'overview' && (
       <div className="grid lg:grid-cols-2 gap-8">
         {/* Subject Progress */}
         <motion.div
@@ -293,6 +348,110 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onLogout }) => {
           </Card>
         </motion.div>
       </div>
+      )}
+
+      {/* Practice History Tab */}
+      {activeTab === 'practice-history' && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+        >
+          {practiceLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+            </div>
+          ) : practiceHistory.length === 0 ? (
+            <Card className="p-12 text-center">
+              <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">No Practice History Yet</h3>
+              <p className="text-gray-600 mb-6">
+                Start practicing problems to build your learning history
+              </p>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              {/* Practice Stats Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                      <Target className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Total Sessions</p>
+                      <p className="text-2xl font-bold text-gray-900">{practiceHistory.length}</p>
+                    </div>
+                  </div>
+                </Card>
+                <Card className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-green-100 rounded-lg">
+                      <TrendingUp className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Avg Score</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {Math.round(practiceHistory.reduce((sum, s) => sum + s.score, 0) / practiceHistory.length)}%
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+                <Card className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-orange-100 rounded-lg">
+                      <Calendar className="w-5 h-5 text-orange-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Total Problems</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {practiceHistory.reduce((sum, s) => sum + s.problems.length, 0)}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Practice Sessions List */}
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Practice Sessions</h3>
+                <div className="space-y-4">
+                  {practiceHistory.map((session, index) => (
+                    <motion.div
+                      key={session._id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex-1">
+                        <h4 className="font-medium text-gray-900 mb-1">{session.topic}</h4>
+                        <div className="flex items-center gap-4 text-sm text-gray-600">
+                          <span className="capitalize">{session.difficulty}</span>
+                          <span>•</span>
+                          <span>{session.problems.length} problems</span>
+                          <span>•</span>
+                          <span>{new Date(session.completedAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-2xl font-bold ${
+                          session.score >= 70 ? 'text-green-600' : 'text-orange-600'
+                        }`}>
+                          {session.score}%
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {session.answers.filter(a => a.isCorrect).length}/{session.problems.length} correct
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+          )}
+        </motion.div>
+      )}
     </div>
   );
 };

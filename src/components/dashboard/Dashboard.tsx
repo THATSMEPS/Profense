@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Play, Trophy, TrendingUp, Star } from 'lucide-react';
+import { BookOpen, Play, Trophy, TrendingUp, Star, CheckCircle } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { ProgressRing } from '../ui/ProgressRing';
@@ -15,9 +15,16 @@ interface DashboardProps {
   onStartQuiz?: (subject?: string, difficulty?: string) => void;
 }
 
+interface CourseWithTopicProgress extends Course {
+  topicProgressData?: {
+    completedTopics: number;
+    totalTopics: number;
+  };
+}
+
 export const Dashboard: React.FC<DashboardProps> = ({ onStartLearning, onViewCourses, onStartQuiz }) => {
   const { user, setError } = useApp();
-  const [recentCourses, setRecentCourses] = useState<Course[]>([]);
+  const [recentCourses, setRecentCourses] = useState<CourseWithTopicProgress[]>([]);
   const [userStats, setUserStats] = useState<any>(null);
   const [recommendedCourses, setRecommendedCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +44,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ onStartLearning, onViewCou
         courseService.getRecommendedCourses()
       ]);
 
-      setRecentCourses(enrolledCourses.slice(0, 3)); // Show latest 3 courses
+      // Fetch topic progress for each enrolled course
+      const coursesWithTopicData = await Promise.all(
+        enrolledCourses.slice(0, 3).map(async (course) => {
+          try {
+            const progressData = await courseService.getTopicProgress(course.id);
+            return {
+              ...course,
+              topicProgressData: {
+                completedTopics: progressData.completedTopics,
+                totalTopics: progressData.totalTopics
+              }
+            };
+          } catch (error) {
+            console.error(`Failed to fetch topic progress for ${course.id}:`, error);
+            return {
+              ...course,
+              topicProgressData: {
+                completedTopics: 0,
+                totalTopics: course.topics?.length || 0
+              }
+            };
+          }
+        })
+      );
+
+      setRecentCourses(coursesWithTopicData);
       setUserStats(stats);
       setRecommendedCourses(recommended.slice(0, 6)); // Show top 6 recommendations
     } catch (error) {
@@ -218,6 +250,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onStartLearning, onViewCou
                       <span>{course.difficulty}</span>
                       <span>{course.duration}</span>
                     </div>
+                    {course.topicProgressData && (
+                      <div className="mt-2 flex items-center gap-1 text-sm text-gray-700">
+                        <CheckCircle size={14} className={course.topicProgressData.completedTopics > 0 ? 'text-green-600' : 'text-gray-400'} />
+                        <span className="font-medium">
+                          {course.topicProgressData.completedTopics}/{course.topicProgressData.totalTopics} topics completed
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="text-center">
                     <ProgressRing percentage={course.progress} size={60} strokeWidth={4} />

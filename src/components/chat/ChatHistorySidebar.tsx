@@ -20,8 +20,11 @@ interface ChatSession {
   title?: string;
   subject?: string;
   currentTopic?: string;
+  courseId?: string;
+  topicId?: string;
   messageCount: number;
   lastActivity: string;
+  totalDuration: number;
   sessionStatus: 'active' | 'paused' | 'completed' | 'archived';
   conceptsCovered: Array<{
     concept: string;
@@ -37,6 +40,8 @@ interface ChatHistorySidebarProps {
   onSelectSession: (sessionId: string) => void;
   currentSessionId?: string;
   onCreateNewSession: () => void;
+  courseId?: string; // NEW: Filter by course
+  topicId?: string; // NEW: Filter by topic
 }
 
 export const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
@@ -44,7 +49,9 @@ export const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
   onClose,
   onSelectSession,
   currentSessionId,
-  onCreateNewSession
+  onCreateNewSession,
+  courseId,
+  topicId
 }) => {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(false);
@@ -59,24 +66,35 @@ export const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
     
     setLoading(true);
     try {
-      const currentPage = reset ? 1 : page;
-      const response = await chatService.getChatSessions({
-        page: currentPage,
-        limit: 20,
-        status: filterStatus === 'all' ? undefined : filterStatus,
-        search: searchQuery || undefined
-      });
+      let response;
       
-      if (response.success && response.data.sessions) {
+      // If courseId provided, use course-specific endpoint
+      if (courseId) {
+        response = await chatService.getCourseSessionsCall(courseId, topicId);
+      } else {
+        // Otherwise use general sessions endpoint
+        const currentPage = reset ? 1 : page;
+        response = await chatService.getChatSessions({
+          page: currentPage,
+          limit: 20,
+          status: filterStatus === 'all' ? undefined : filterStatus,
+          search: searchQuery || undefined
+        });
+      }
+      
+      if (response.success && response.data?.sessions) {
+        // Normalize session id field to _id to handle backend shapes that return `id` or `_id`
+        const sessionsRaw = response.data?.sessions ?? [];
+        const normalized = sessionsRaw.map((s: any) => ({ ...s, _id: s._id ?? s.id }));
         if (reset) {
-          setSessions(response.data.sessions);
+          setSessions(normalized);
           setPage(2);
         } else {
-          setSessions(prev => [...prev, ...response.data.sessions]);
+          setSessions(prev => [...prev, ...normalized]);
           setPage(prev => prev + 1);
         }
-        
-        setHasMore(response.data.sessions.length === 20);
+
+        setHasMore(normalized?.length === 20);
       }
     } catch (error) {
       console.error('Error loading chat sessions:', error);
@@ -90,7 +108,7 @@ export const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
     if (isOpen) {
       loadSessions(true);
     }
-  }, [isOpen, searchQuery, filterStatus]);
+  }, [isOpen, searchQuery, filterStatus, courseId, topicId]);
 
   // Format relative time
   const formatRelativeTime = (timestamp: string) => {
@@ -198,7 +216,30 @@ export const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
             {/* Controls */}
             <div className="p-4 border-b border-gray-200">
               <Button
-                onClick={onCreateNewSession}
+                onClick={async () => {
+                  try {
+                    if (courseId) {
+                      // Create a course-scoped session
+                      const resp = await chatService.createCourseSession(courseId, topicId);
+                      if (resp.success && resp.data?.session) {
+                        // backend might return `id` or `_id` — normalize (use any to avoid type collisions)
+                        const created: any = resp.data.session as any;
+                        const newSessionId = created._id ?? created.id;
+                        // Select the created session
+                        onSelectSession(newSessionId);
+                        // Refresh list
+                        loadSessions(true);
+                        return;
+                      }
+                    }
+                    // Fallback to generic new session flow
+                    onCreateNewSession();
+                  } catch (error) {
+                    console.error('Failed to create course session:', error);
+                    // Fallback
+                    onCreateNewSession();
+                  }
+                }}
                 className="w-full mb-3 bg-blue-600 hover:bg-blue-700 text-white"
                 size="sm"
               >
@@ -244,19 +285,19 @@ export const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
                 </div>
               ) : (
                 <div className="p-2">
-                  {sessions.map((session) => (
-                    <motion.div
-                      key={session._id}
-                      layout
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={`p-3 rounded-lg mb-2 cursor-pointer hover:bg-gray-50 border transition-colors ${
-                        currentSessionId === session._id 
-                          ? 'border-blue-300 bg-blue-50' 
-                          : 'border-transparent'
-                      }`}
-                      onClick={() => onSelectSession(session._id)}
-                    >
+                      {sessions.map((session) => (
+                        <motion.div
+                          key={session._id}
+                          layout
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={`group p-3 rounded-lg mb-2 cursor-pointer hover:bg-gray-50 border transition-colors ${
+                            currentSessionId === session._id 
+                              ? 'border-blue-300 bg-blue-50' 
+                              : 'border-transparent'
+                          }`}
+                          onClick={() => onSelectSession(session._id)}
+                        >
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
                           <h3 className="font-medium text-gray-900 text-sm truncate">
@@ -305,6 +346,28 @@ export const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
                               title="Archive"
                             >
                               <Archive className="w-3 h-3" />
+                            </button>
+                          )}
+                          {/* Resume button */}
+                          {session.sessionStatus !== 'active' && (
+                            <button
+                              onClick={async (e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                try {
+                                  const resp = await chatService.resumeSession(session._id);
+                                  if (resp.success && resp.data?.session) {
+                                    // Refresh list and select resumed session
+                                    setSessions(prev => prev.map(s => s._id === session._id ? { ...s, sessionStatus: 'active' } : s));
+                                    onSelectSession(session._id);
+                                  }
+                                } catch (err) {
+                                  console.error('Failed to resume session:', err);
+                                }
+                              }}
+                              className="p-1 hover:bg-gray-200 rounded transition-colors"
+                              title="Resume"
+                            >
+                              <History className="w-3 h-3" />
                             </button>
                           )}
                           <button

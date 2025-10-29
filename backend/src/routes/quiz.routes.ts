@@ -33,7 +33,9 @@ router.post('/generate', asyncHandler(async (req: AuthRequest, res) => {
     topic, 
     difficulty = 'intermediate', 
     questionCount: requestedQuestionCount = 5,
-    questionTypes = ['multiple-choice', 'numerical', 'text']
+    questionTypes = ['multiple-choice', 'numerical', 'text'],
+    courseId, // NEW: Link to course
+    topicId // NEW: Link to specific topic in course
   } = req.body;
   
   // Cap question count to prevent AI response truncation
@@ -107,7 +109,9 @@ router.post('/generate', asyncHandler(async (req: AuthRequest, res) => {
         conversationSummary: conversationContext.substring(0, 1000), // Limit length
         conceptsCovered,
         aiModel: 'gemini-2.5-flash',
-        generatedAt: new Date()
+        generatedAt: new Date(),
+        courseId: courseId || undefined, // NEW: Store course context
+        topicId: topicId || undefined // NEW: Store topic context
       },
       isActive: true,
       tags: [subject, topic, difficulty].filter(Boolean).map(t => t.toLowerCase())
@@ -331,6 +335,50 @@ router.post('/:quizId/submit', asyncHandler(async (req: AuthRequest, res) => {
     
     quiz.attempts.push(attempt as any);
     await quiz.save();
+    
+    // NEW: Auto-complete topic if quiz passed and linked to a topic
+    if (evaluationResult.percentage >= 70 && 
+        quiz.generationContext?.courseId && 
+        quiz.generationContext?.topicId) {
+      try {
+        const TopicProgressModule = await import('../models/TopicProgress');
+        const TopicProgress = TopicProgressModule.TopicProgress;
+        
+        // Get or create topic progress
+        const topicProgress = await TopicProgress.getOrCreate(
+          req.user!.id,
+          quiz.generationContext.courseId,
+          quiz.generationContext.topicId
+        );
+        
+        // Mark quiz as passed
+        topicProgress.activitiesCompleted.quizPassed = true;
+        
+        // Add quiz score
+        topicProgress.quizScores.push({
+          quizId: quiz._id,
+          score: evaluationResult.percentage,
+          attemptedAt: new Date()
+        });
+        
+        // Recalculate mastery level
+        topicProgress.calculateMasteryLevel();
+        
+        // If all activities completed, mark topic as complete
+        const activities = topicProgress.activitiesCompleted;
+        if (activities.contentRead && activities.chatDiscussed && 
+            activities.practiceDone && activities.quizPassed) {
+          await topicProgress.markAsCompleted();
+        }
+        
+        await topicProgress.save();
+        
+        logger.info(`Auto-completed topic ${quiz.generationContext.topicId} for user ${req.user!.id} after passing quiz`);
+      } catch (error) {
+        logger.error('Failed to auto-complete topic:', error);
+        // Don't fail the quiz submission if topic update fails
+      }
+    }
     
     const newAttempt = quiz.attempts[quiz.attempts.length - 1];
     const processingTime = Date.now() - startTime;

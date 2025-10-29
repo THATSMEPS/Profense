@@ -71,6 +71,14 @@ const chatSessionSchema = new Schema<IChatSession>({
     required: true,
     index: true
   },
+  courseId: {
+    type: String,
+    index: true
+  },
+  topicId: {
+    type: String,
+    index: true
+  },
   summary: {
     type: String,
     trim: true,

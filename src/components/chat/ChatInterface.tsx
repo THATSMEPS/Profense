@@ -1,19 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, MicOff, MessageSquare, Brain, Menu, X, ArrowLeft } from 'lucide-react';
+import { Send, Mic, MicOff, MessageSquare, Brain, Menu, X, ArrowLeft, BookOpen } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useApp } from '../../context/AppContext';
 import { ChatMessage } from '../../types';
 import { CourseOutline } from './CourseOutline';
+import { TopicViewer } from '../courses/TopicViewer';
 import { TypingMarkdown } from './TypingMarkdown';
 import { ModerationAlert } from './ModerationAlert';
 import { enhancedChatService, ModerationAlert as ModerationAlertType } from '../../services/enhancedChatService';
 import { userService } from '../../services/userService';
+import { courseService } from '../../services/courseService';
 
 interface ChatInterfaceProps {
   onGenerateQuiz?: (subject?: string, difficulty?: string, topic?: string, chatContext?: string) => void;
   onBack?: () => void;
 }
+
+type ViewMode = 'chat' | 'study';
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz, onBack }) => {
   const { 
@@ -38,6 +42,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz, on
   const [isTyping, setIsTyping] = useState(false);
   const [currentlyTypingMessageId, setCurrentlyTypingMessageId] = useState<string | null>(null);
   const [moderationAlert, setModerationAlert] = useState<ModerationAlertType | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('chat');
+  const [currentTopicIndex, setCurrentTopicIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -254,6 +260,38 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz, on
               </div>
             </div>
 
+            {/* Mode Switcher (only show if in a course) */}
+            {currentCourse && (
+              <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
+                <button
+                  onClick={() => setViewMode('study')}
+                  className={`px-4 py-2 rounded-md transition-all ${
+                    viewMode === 'study'
+                      ? 'bg-white text-blue-600 shadow-sm font-medium'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <BookOpen size={16} />
+                    Study
+                  </div>
+                </button>
+                <button
+                  onClick={() => setViewMode('chat')}
+                  className={`px-4 py-2 rounded-md transition-all ${
+                    viewMode === 'chat'
+                      ? 'bg-white text-blue-600 shadow-sm font-medium'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <MessageSquare size={16} />
+                    Chat
+                  </div>
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center gap-2">
               {/* Teaching Mode Selector */}
               <select
@@ -322,6 +360,26 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz, on
           </div>
         </div>
 
+        {/* Content Area - Study Mode or Chat Mode */}
+        {viewMode === 'study' && currentCourse ? (
+          <div className="flex-1 overflow-hidden">
+            <TopicViewer
+              courseId={currentCourse.id}
+              topics={currentCourse.topics}
+              currentTopicIndex={currentTopicIndex}
+              onTopicChange={setCurrentTopicIndex}
+              onMarkComplete={async (topicId) => {
+                try {
+                  await courseService.markTopicAsCompleted(currentCourse.id, topicId);
+                  // Optionally refresh course data or show success message
+                } catch (error) {
+                  console.error('Failed to mark topic complete:', error);
+                }
+              }}
+            />
+          </div>
+        ) : (
+          <>
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {chatMessages.length === 0 && (
@@ -428,7 +486,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz, on
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Message Input */}
+        {/* Message Input - Only show in chat mode */}
         <div className="bg-white border-t border-gray-200 p-4">
           <div className="flex items-end gap-3">
             <button
@@ -464,6 +522,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onGenerateQuiz, on
             </Button>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
     </div>

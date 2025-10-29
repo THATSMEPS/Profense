@@ -497,4 +497,215 @@ router.get('/:id/topics/:topicId', asyncHandler(async (req: AuthRequest, res) =>
   res.json(response);
 }));
 
+/**
+ * @route   GET /api/courses/:id/progress
+ * @desc    Get topic progress for a course
+ * @access  Private
+ */
+router.get('/:id/progress', asyncHandler(async (req: AuthRequest, res) => {
+  const { TopicProgress } = await import('../models/TopicProgress');
+  
+  const course = await Course.findById(req.params.id);
+  if (!course || !course.isActive) {
+    throw new AppError('Course not found', 404);
+  }
+
+  // Get all topic progress for this course and user
+  const progressRecords = await TopicProgress.find({
+    userId: req.user!.id,
+    courseId: req.params.id
+  });
+
+  // Create a map for quick lookup
+  const progressMap = new Map();
+  progressRecords.forEach(progress => {
+    progressMap.set(progress.topicId, {
+      status: progress.status,
+      masteryLevel: progress.masteryLevel,
+      timeSpent: progress.timeSpent,
+      completedAt: progress.completedAt,
+      activitiesCompleted: progress.activitiesCompleted,
+      lastAccessedAt: progress.lastAccessedAt
+    });
+  });
+
+  // Build response with topic progress
+  const topicsWithProgress = course.topics.map(topic => ({
+    topicId: topic._id.toString(),
+    title: topic.title,
+    order: topic.order,
+    progress: progressMap.get(topic._id.toString()) || {
+      status: 'not-started',
+      masteryLevel: 0,
+      timeSpent: 0,
+      activitiesCompleted: {
+        contentRead: false,
+        chatDiscussed: false,
+        practiceDone: false,
+        quizPassed: false
+      }
+    }
+  }));
+
+  // Calculate overall course progress
+  const totalTopics = course.topics.length;
+  const completedTopics = progressRecords.filter(p => p.status === 'completed').length;
+  const progressPercentage = totalTopics > 0 ? Math.round((completedTopics / totalTopics) * 100) : 0;
+
+  const response: APIResponse = {
+    success: true,
+    data: {
+      courseId: course._id,
+      courseTitle: course.title,
+      totalTopics,
+      completedTopics,
+      progressPercentage,
+      topics: topicsWithProgress
+    },
+    message: 'Course progress retrieved successfully'
+  };
+
+  res.json(response);
+}));
+
+/**
+ * @route   POST /api/courses/:id/topics/:topicId/start
+ * @desc    Mark topic as started
+ * @access  Private
+ */
+router.post('/:id/topics/:topicId/start', asyncHandler(async (req: AuthRequest, res) => {
+  const { TopicProgress } = await import('../models/TopicProgress');
+  
+  const course = await Course.findById(req.params.id);
+  if (!course || !course.isActive) {
+    throw new AppError('Course not found', 404);
+  }
+
+  const topic = course.topics.find(t => t._id.toString() === req.params.topicId);
+  if (!topic) {
+    throw new AppError('Topic not found', 404);
+  }
+
+  // Get or create progress record
+  const progress = await (TopicProgress as any).getOrCreate(
+    req.user!.id,
+    req.params.id,
+    req.params.topicId
+  );
+
+  // Mark as started
+  progress.markAsStarted();
+  await progress.save();
+
+  logger.info(`Topic ${req.params.topicId} started by user ${req.user!.id}`);
+
+  const response: APIResponse = {
+    success: true,
+    data: { progress },
+    message: 'Topic marked as started'
+  };
+
+  res.json(response);
+}));
+
+/**
+ * @route   POST /api/courses/:id/topics/:topicId/complete
+ * @desc    Mark topic as completed
+ * @access  Private
+ */
+router.post('/:id/topics/:topicId/complete', asyncHandler(async (req: AuthRequest, res) => {
+  const { TopicProgress } = await import('../models/TopicProgress');
+  
+  const course = await Course.findById(req.params.id);
+  if (!course || !course.isActive) {
+    throw new AppError('Course not found', 404);
+  }
+
+  const topic = course.topics.find(t => t._id.toString() === req.params.topicId);
+  if (!topic) {
+    throw new AppError('Topic not found', 404);
+  }
+
+  // Get or create progress record
+  const progress = await (TopicProgress as any).getOrCreate(
+    req.user!.id,
+    req.params.id,
+    req.params.topicId
+  );
+
+  // Mark as completed
+  progress.markAsCompleted();
+  await progress.save();
+
+  logger.info(`Topic ${req.params.topicId} completed by user ${req.user!.id}`);
+
+  const response: APIResponse = {
+    success: true,
+    data: { progress },
+    message: 'Topic marked as completed'
+  };
+
+  res.json(response);
+}));
+
+/**
+ * @route   PUT /api/courses/:id/topics/:topicId/activity
+ * @desc    Update topic activity (content read, chat discussed, etc.)
+ * @access  Private
+ */
+router.put('/:id/topics/:topicId/activity', asyncHandler(async (req: AuthRequest, res) => {
+  const { TopicProgress } = await import('../models/TopicProgress');
+  const { activityType, timeSpent } = req.body; // activityType: 'contentRead', 'chatDiscussed', 'practiceDone', 'quizPassed'
+  
+  const course = await Course.findById(req.params.id);
+  if (!course || !course.isActive) {
+    throw new AppError('Course not found', 404);
+  }
+
+  const topic = course.topics.find(t => t._id.toString() === req.params.topicId);
+  if (!topic) {
+    throw new AppError('Topic not found', 404);
+  }
+
+  // Get or create progress record
+  const progress = await (TopicProgress as any).getOrCreate(
+    req.user!.id,
+    req.params.id,
+    req.params.topicId
+  );
+
+  // Mark as in-progress if not started
+  if (progress.status === 'not-started') {
+    progress.markAsStarted();
+  }
+
+  // Update activity
+  if (activityType && progress.activitiesCompleted.hasOwnProperty(activityType)) {
+    progress.activitiesCompleted[activityType] = true;
+  }
+
+  // Update time spent
+  if (timeSpent && typeof timeSpent === 'number') {
+    progress.timeSpent += timeSpent;
+  }
+
+  // Recalculate mastery level
+  progress.calculateMasteryLevel();
+  
+  // Update last accessed
+  progress.lastAccessedAt = new Date();
+
+  await progress.save();
+
+  logger.info(`Topic ${req.params.topicId} activity updated: ${activityType}`);
+
+  const response: APIResponse = {
+    success: true,
+    data: { progress },
+    message: 'Topic activity updated'
+  };
+
+  res.json(response);
+}));
+
 export default router;

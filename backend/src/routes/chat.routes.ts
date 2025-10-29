@@ -164,6 +164,135 @@ router.get('/session/:sessionId', asyncHandler(async (req: AuthRequest, res) => 
 }));
 
 /**
+ * @route   GET /api/chat/sessions/course/:courseId
+ * @desc    Get all chat sessions for a specific course
+ * @access  Private
+ */
+router.get('/sessions/course/:courseId', asyncHandler(async (req: AuthRequest, res) => {
+  const { courseId } = req.params;
+  const { topicId } = req.query;
+  
+  const filter: any = { 
+    userId: req.user!.id,
+    courseId,
+    sessionStatus: { $ne: 'archived' }
+  };
+  
+  if (topicId) {
+    filter.topicId = topicId;
+  }
+  
+  const sessions = await ChatSession.find(filter)
+    .sort({ lastActivity: -1 })
+    .select('title subject currentTopic lastActivity messageCount totalDuration sessionStatus');
+  
+  const response: APIResponse = {
+    success: true,
+    data: { sessions },
+    message: 'Course chat sessions retrieved successfully'
+  };
+
+  res.json(response);
+}));
+
+/**
+ * @route   POST /api/chat/session/create
+ * @desc    Create a new chat session for a course/topic
+ * @access  Private
+ */
+router.post('/session/create', asyncHandler(async (req: AuthRequest, res) => {
+  const { courseId, topicId, subject, title } = req.body;
+  
+  if (!courseId) {
+    return res.status(400).json({
+      success: false,
+      error: 'courseId is required'
+    });
+  }
+  
+  const session = new ChatSession({
+    userId: req.user!.id,
+    courseId,
+    topicId,
+    subject: subject || 'General',
+    title: title || `${subject || 'General'} Discussion`,
+    currentTopic: topicId,
+    sessionStatus: 'active',
+    context: {
+      difficulty: 'normal',
+      teachingMode: 'normal',
+      previousConcepts: [],
+      sessionType: 'teaching',
+      learningObjectives: []
+    }
+  });
+  
+  await session.save();
+  
+  // Update topic progress - mark chatDiscussed as true
+  if (topicId) {
+    try {
+      const TopicProgressModule = await import('../models/TopicProgress');
+      const TopicProgress = TopicProgressModule.TopicProgress;
+      
+      const topicProgress = await TopicProgress.getOrCreate(
+        req.user!.id,
+        courseId,
+        topicId
+      );
+      
+      topicProgress.activitiesCompleted.chatDiscussed = true;
+      topicProgress.calculateMasteryLevel();
+      await topicProgress.save();
+    } catch (error) {
+      logger.error('Failed to update topic progress:', error);
+    }
+  }
+  
+  const response: APIResponse = {
+    success: true,
+    data: { session },
+    message: 'Chat session created successfully'
+  };
+
+  res.json(response);
+}));
+
+/**
+ * @route   POST /api/chat/session/:sessionId/resume
+ * @desc    Resume a previous chat session
+ * @access  Private
+ */
+router.post('/session/:sessionId/resume', asyncHandler(async (req: AuthRequest, res) => {
+  const { sessionId } = req.params;
+  
+  const session = await ChatSession.findOne({
+    _id: sessionId,
+    userId: req.user!.id
+  });
+  
+  if (!session) {
+    return res.status(404).json({
+      success: false,
+      error: 'Chat session not found'
+    });
+  }
+  
+  // Reactivate the session
+  session.sessionStatus = 'active';
+  session.lastActivity = new Date();
+  await session.save();
+  
+  const response: APIResponse = {
+    success: true,
+    data: { session },
+    message: 'Chat session resumed successfully'
+  };
+
+  res.json(response);
+}));
+
+/**
  * @route   POST /api/chat/message
  * @desc    Send message and get AI response
  * @access  Private
@@ -176,7 +305,9 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
     currentTopic, 
     difficulty = 'normal',
     isGreeting = false,
-    learningMode = 'teaching'
+    learningMode = 'teaching',
+    courseId, // NEW: Link to course
+    topicId // NEW: Link to topic
   } = req.body;
   
   if (!message) {
@@ -213,6 +344,8 @@ router.post('/message', asyncHandler(async (req: AuthRequest, res) => {
       // Create new session if none provided
       chatSession = new ChatSession({
         userId: req.user!.id,
+        courseId, // NEW: Save course context
+        topicId, // NEW: Save topic context
         subject: subject || 'General Discussion',
         currentTopic: currentTopic || subject,
         context: {

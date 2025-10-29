@@ -246,6 +246,45 @@ class ChatService {
       throw error;
     }
   }
+
+  // NEW: Get chat sessions for a specific course/topic
+  async getCourseSessionsCall(courseId: string, topicId?: string): Promise<ApiResponse<{ sessions: ChatSession[] }>> {
+    try {
+      const params = topicId ? `?topicId=${topicId}` : '';
+      const response: ApiResponse<{ sessions: ChatSession[] }> = await apiClient.get(`/chat/sessions/course/${courseId}${params}`);
+      return response;
+    } catch (error) {
+      console.error('Get course sessions error:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Create a new chat session for a course/topic
+  async createCourseSession(courseId: string, topicId?: string, subject?: string, title?: string): Promise<ApiResponse<{ session: ChatSession }>> {
+    try {
+      const response: ApiResponse<{ session: ChatSession }> = await apiClient.post('/chat/session/create', {
+        courseId,
+        topicId,
+        subject,
+        title
+      });
+      return response;
+    } catch (error) {
+      console.error('Create course session error:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Resume a previous chat session
+  async resumeSession(sessionId: string): Promise<ApiResponse<{ session: ChatSession }>> {
+    try {
+      const response: ApiResponse<{ session: ChatSession }> = await apiClient.post(`/chat/session/${sessionId}/resume`);
+      return response;
+    } catch (error) {
+      console.error('Resume session error:', error);
+      throw error;
+    }
+  }
 }
 
 export const chatService = new ChatService();

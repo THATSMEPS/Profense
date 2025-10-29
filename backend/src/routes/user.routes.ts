@@ -128,36 +128,29 @@ router.get('/stats', asyncHandler(async (req: AuthRequest, res) => {
     _id: { $in: user.enrolledCourses } 
   });
 
-  // Calculate courses completed (those with all topics covered in chat sessions)
+  // Calculate courses completed using TopicProgress
+  const TopicProgressModule = await import('../models/TopicProgress');
+  const TopicProgress = TopicProgressModule.TopicProgress;
+  
   let coursesCompleted = 0;
   for (const course of enrolledCourses) {
-    // Get chat sessions for this course
-    const courseSessions = await ChatSession.find({
-      userId: req.user!.id,
-      subject: course.subject,
-      sessionStatus: { $in: ['active', 'completed'] }
-    });
-
-    // Extract covered topics
-    const coveredTopics = new Set<string>();
-    courseSessions.forEach(session => {
-      if (session.currentTopic) {
-        coveredTopics.add(session.currentTopic.toLowerCase());
-      }
-      session.conceptsCovered?.forEach(c => coveredTopics.add(c.concept.toLowerCase()));
-    });
-
-    // Check if all topics are covered
     const totalTopics = course.topics?.length || 0;
-    let completedTopicsCount = 0;
     
-    course.topics?.forEach((topic: any) => {
-      if (coveredTopics.has(topic.title.toLowerCase())) {
-        completedTopicsCount++;
-      }
+    if (totalTopics === 0) continue;
+    
+    // Get all topic progress for this course
+    const topicProgressList = await TopicProgress.find({
+      userId: req.user!.id,
+      courseId: course._id
     });
-
-    if (totalTopics > 0 && completedTopicsCount === totalTopics) {
+    
+    // Count completed topics
+    const completedTopics = topicProgressList.filter(
+      tp => tp.status === 'completed'
+    ).length;
+    
+    // Course is complete if all topics are completed
+    if (completedTopics === totalTopics) {
       coursesCompleted++;
     }
   }

@@ -1,5 +1,5 @@
 import { Request } from 'express';
-import { Document, Types } from 'mongoose';
+import { Document, Types, Model } from 'mongoose';
 
 // User Types
 export interface IUser extends Document {
@@ -113,6 +113,120 @@ export interface ILearningSession extends Document {
   createdAt: Date;
 }
 
+// Topic Progress Types
+export interface ITopicProgress extends Document {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  courseId: Types.ObjectId;
+  topicId: string;
+  status: 'not-started' | 'in-progress' | 'completed';
+  startedAt?: Date;
+  completedAt?: Date;
+  timeSpent: number; // in minutes
+  masteryLevel: number; // 0-100
+  activitiesCompleted: {
+    contentRead: boolean;
+    chatDiscussed: boolean;
+    practiceDone: boolean;
+    quizPassed: boolean;
+  };
+  quizScores: Array<{
+    quizId: Types.ObjectId;
+    score: number;
+    attemptedAt: Date;
+  }>;
+  lastAccessedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Methods
+  calculateMasteryLevel(): number;
+  markAsStarted(): void;
+  markAsCompleted(): void;
+}
+
+export interface ITopicProgressModel extends Model<ITopicProgress> {
+  getOrCreate(userId: string, courseId: string, topicId: string): Promise<ITopicProgress>;
+}
+
+// Learning Path Types
+export interface ILearningPath extends Document {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  goalTopic: string;
+  timeframe: string;
+  learningPath: {
+    phases: Array<{
+      week: number;
+      topics: string[];
+      focus: string;
+      resources?: string[];
+      completed?: boolean;
+    }>;
+    milestones?: Array<{
+      week: number;
+      description: string;
+      achieved?: boolean;
+    }>;
+  };
+  savedAt: Date;
+  status: 'active' | 'completed' | 'archived';
+  progress: {
+    phasesCompleted: number;
+    totalPhases: number;
+    percentComplete: number;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Methods
+  updateProgress(): void;
+}
+
+export interface ILearningPathModel extends Model<ILearningPath> {
+  getActivePaths(userId: Types.ObjectId): Promise<ILearningPath[]>;
+}
+
+// Practice Session Types
+export interface IPracticeSession extends Document {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  topic: string;
+  difficulty: 'beginner' | 'intermediate' | 'advanced';
+  problems: Array<{
+    question: string;
+    type: 'multiple-choice' | 'numerical' | 'text';
+    options?: string[];
+    correctAnswer: string;
+    explanation?: string;
+    hints?: string[];
+  }>;
+  answers: Array<{
+    problemIndex: number;
+    userAnswer: string;
+    isCorrect: boolean;
+    timeSpent?: number;
+  }>;
+  score: number;
+  completedAt: Date;
+  totalTimeSpent: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IPracticeSessionModel extends Model<IPracticeSession> {
+  getUserHistory(userId: Types.ObjectId, topic?: string): Promise<IPracticeSession[]>;
+  getTopicStats(userId: Types.ObjectId, topic: string): Promise<{
+    topic: string;
+    sessionsCount: number;
+    averageScore: number;
+    bestScore: number;
+    totalProblems: number;
+    correctAnswers: number;
+    accuracy: number;
+  }>;
+}
+
 // Chat Types
 export interface IChatMessage extends Document {
   _id: Types.ObjectId;
@@ -135,6 +249,8 @@ export interface IChatMessage extends Document {
 export interface IChatSession extends Document {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
+  courseId?: string;
+  topicId?: string;
   summary?: string;
   title?: string;
   subject?: string;
@@ -193,6 +309,8 @@ export interface IQuiz extends Document {
     conceptsCovered: string[];
     aiModel: string;
     generatedAt: Date;
+    courseId?: string;
+    topicId?: string;
   };
   attempts: IQuizAttempt[];
   isActive: boolean;
