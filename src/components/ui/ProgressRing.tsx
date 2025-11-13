@@ -18,8 +18,11 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
   const offset = circumference - (percentage / 100) * circumference;
 
   return (
-    <div className={`relative ${className}`}>
-      <svg width={size} height={size} className="transform -rotate-90">
+    <div
+      className={`flex items-center justify-center ${className}`}
+      style={{ width: size, height: size, position: 'relative' }}
+    >
+      <svg width={size} height={size} className="absolute top-0 left-0 transform -rotate-90">
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -42,9 +45,12 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
           className="text-blue-600 transition-all duration-500 ease-in-out"
         />
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-2xl font-bold text-gray-800">{percentage}%</span>
-      </div>
+      <span
+        className="text-2xl font-bold text-gray-800"
+        style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}
+      >
+        {percentage}%
+      </span>
     </div>
   );
 };
